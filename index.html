@@ -1601,7 +1601,6 @@ const AppState = {
   userProfile: null,
   geminiApiKey: null,
   // 견적
-  estimateItems: [],        // [{id, name, unitPrice, qty, presetId}]
   pricePresets: [],         // Supabase에서 로드한 단가표
   pricePickerCategory: null,
   pricePickerOpen: false,
@@ -3891,9 +3890,6 @@ function renderCostAll() {
   // 활성 카테고리 재렌더 (비교모드 안내 갱신)
   const activeCat = document.querySelector('.cost-quick-cat.active');
   if (activeCat) renderCostQuickItems(activeCat.dataset.cat);
-
-  // 기존 호환
-  AppState.estimateItems = getActiveQuote().items;
 }
 
 /* ── 단일 모드 ── */
@@ -3996,7 +3992,6 @@ function renderCostSummary() {
     } else { badgeEl.style.display = 'none'; }
   }
   if (totalEl) totalEl.textContent = formatKRW(total);
-  updateEstimateSummary();
 }
 
 /* ── 비교 모드 ── */
@@ -4458,7 +4453,7 @@ function renderPricePicker() {
   `).join('');
   itemsEl.querySelectorAll('.price-picker-item').forEach(el => {
     el.addEventListener('click', () => {
-      addEstimateItem({
+      addCostItem({
         presetId: el.dataset.presetId,
         name: el.dataset.name,
         unitPrice: Number(el.dataset.price),
@@ -4471,68 +4466,6 @@ function renderPricePicker() {
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    견적 항목 관리
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-function addEstimateItem(item) {
-  // 같은 preset이면 수량만 증가
-  if (item.presetId) {
-    const existing = AppState.estimateItems.find(i => i.presetId === item.presetId);
-    if (existing) { existing.qty++; renderEstimateTable(); return; }
-  }
-  AppState.estimateItems.push({ id: Date.now(), ...item });
-  renderEstimateTable();
-}
-
-function removeEstimateItem(id) {
-  AppState.estimateItems = AppState.estimateItems.filter(i => i.id !== id);
-  renderEstimateTable();
-}
-
-function changeQty(id, delta) {
-  const item = AppState.estimateItems.find(i => i.id === id);
-  if (!item) return;
-  item.qty = Math.max(1, item.qty + delta);
-  renderEstimateTable();
-}
-
-function renderEstimateTable() {
-  const tbody = document.getElementById('estimateTableBody');
-  if (!tbody) return; // 구 화면 없으면 스킵
-  const items = AppState.estimateItems;
-  if (!items.length) {
-    tbody.innerHTML = `<tr id="estimateEmptyRow"><td colspan="4" style="text-align:center;color:var(--sub);padding:20px;font-size:13px;">항목을 추가해주세요</td></tr>`;
-    return;
-  }
-  tbody.innerHTML = items.map(item => `
-    <tr>
-      <td style="font-weight:800;">${item.name}${item.unit ? ` <span style="font-size:11px;color:var(--sub);font-weight:400;">/${item.unit}</span>` : ''}</td>
-      <td style="text-align:right;color:var(--primary);font-weight:800;">${formatKRW(item.unitPrice)}</td>
-      <td style="text-align:center;">
-        <button class="qty-btn" onclick="changeQty(${item.id},-1)">−</button>
-        <span class="qty-val">${item.qty}</span>
-        <button class="qty-btn" onclick="changeQty(${item.id},+1)">+</button>
-      </td>
-      <td style="text-align:right;">
-        <div style="font-size:12px;color:var(--sub);">${formatKRW(item.unitPrice * item.qty)}</div>
-        <button class="item-del-btn" onclick="removeEstimateItem(${item.id})">×</button>
-      </td>
-    </tr>
-  `).join('');
-}
-
-function updateEstimateSummary() {
-  // 구 화면 호환 (없으면 스킵)
-  const subtotal = AppState.estimateItems.reduce((s, i) => s + i.unitPrice * i.qty, 0);
-  const discountEl = document.getElementById('discountInput');
-  const discount = discountEl ? Number(discountEl.value || 0) : 0;
-  const total = Math.max(0, subtotal - discount);
-  const subtotalEl = document.getElementById('estimateSubtotal');
-  const totalEl = document.getElementById('estimateTotal');
-  if (subtotalEl) subtotalEl.textContent = formatKRW(subtotal);
-  if (totalEl) totalEl.textContent = formatKRW(total);
-}
-
-/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   직접 입력
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    상담 저장 (견적 항목 포함)
@@ -4564,7 +4497,7 @@ async function showMainApp(user) {
   await loadPatientTypes();
   resetPatientForm();
   renderPatientCount(); renderPatientList(); renderSelectedPatient();
-  renderSttState(); renderEstimateTable(); setConsultTab('history');
+  renderSttState(); setConsultTab('history');
   setTimeout(async () => {
     initCanvas(); bindCanvasEvents(); bindCanvasTopbar(); bindOpacityControls(); renderCostScreen();
     await loadCanvasCategories();
@@ -5219,13 +5152,13 @@ function resetConsultationForm() {
   AppState.savedCanvasUrl = null; AppState.canvasSaveKey = null; AppState.currentConsultId = null;
   const rawEl = document.getElementById('sttRawInput');
   if(rawEl) { rawEl.value=''; rawEl.style.color=''; }
-  AppState.estimateItems=[];
+  resetQuotes();
   const aiEl = document.getElementById('aiSummaryResult'); if(aiEl) aiEl.style.display='none';
   // 비용상담 피커/직접입력 닫기
   document.getElementById('costPricePicker')?.classList.add('hidden');
   document.getElementById('costDirectInputRow')?.classList.add('hidden');
   AppState.pricePickerOpen=false; AppState.directInputOpen=false;
-  renderEstimateTable(); renderSttState();
+  renderCostAll(); renderSttState();
 }
 
 function updateEstimatePreview() {
@@ -5237,9 +5170,10 @@ async function saveConsultation() {
   const patient=getSelectedPatient();
   if(!patient){alert('상담할 환자를 먼저 선택해주세요.');return;}
 
-  const subtotal = AppState.estimateItems.reduce((s,i)=>s+i.unitPrice*i.qty,0);
-  const discount = Number(document.getElementById('discountInput')?.value || costDiscountRate > 0 ? Math.round(subtotal * costDiscountRate / 100) : 0);
-  const total = Math.max(0, subtotal - discount);
+  const activeQuote = getActiveQuote();
+  const subtotal = activeQuote.items.reduce((s,i)=>s+i.unitPrice*i.qty,0);
+  const discountAmt = Math.round(subtotal * activeQuote.discountRate / 100);
+  const total = Math.max(0, subtotal - discountAmt);
 
   const payload={
     user_id: AppState.currentUser.id,
@@ -5257,8 +5191,8 @@ async function saveConsultation() {
     if(error) throw error;
 
     // 견적 항목 저장
-    if(AppState.estimateItems.length && data?.id) {
-      const itemPayloads = AppState.estimateItems.map((item, idx) => ({
+    if(activeQuote.items.length && data?.id) {
+      const itemPayloads = activeQuote.items.map((item, idx) => ({
         consultation_id: data.id,
         user_id: AppState.currentUser.id,
         preset_id: item.presetId || null,
@@ -5612,7 +5546,6 @@ function bindEvents() {
   // 비용상담 화면
   document.getElementById('openPricePickerBtn')?.addEventListener('click', togglePricePicker);
   document.getElementById('addDirectItemBtn')?.addEventListener('click', toggleDirectInput);
-  document.getElementById('discountInput')?.addEventListener('input', updateEstimateSummary);
 
   // 상담
   document.getElementById('resetConsultationBtn')?.addEventListener('click', resetConsultationForm);
