@@ -1434,6 +1434,19 @@
 <!-- 토스트 알림 -->
 <div class="toast" id="toastEl"></div>
 
+<!-- 상담 후 환자 연결 모달 -->
+<div class="modal-overlay hidden" id="linkPatientOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:700;display:flex;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--panel);border-radius:22px;padding:28px 24px;width:100%;max-width:340px;box-shadow:0 24px 60px rgba(0,0,0,.2);">
+    <div style="font-size:20px;font-weight:900;margin-bottom:8px;">상담 완료 ✓</div>
+    <div style="font-size:13px;color:var(--sub);line-height:1.6;margin-bottom:22px;">이 상담 기록을 환자에게 연결하시겠습니까?</div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <button onclick="linkPatientAndSave('existing')" style="padding:13px;border-radius:14px;border:1px solid var(--primary);background:var(--primary);color:#fff;font-size:14px;font-weight:800;cursor:pointer;">기존 환자 불러오기</button>
+      <button onclick="linkPatientAndSave('new')" style="padding:13px;border-radius:14px;border:1px solid var(--line);background:var(--panel);color:var(--text);font-size:14px;font-weight:800;cursor:pointer;">신규 환자 등록</button>
+      <button onclick="linkPatientAndSave('later')" style="padding:13px;border-radius:14px;border:none;background:transparent;color:var(--sub);font-size:13px;font-weight:800;cursor:pointer;">나중에 연결</button>
+    </div>
+  </div>
+</div>
+
 <!-- 카테고리 관리 모달 -->
 <div class="cat-mgmt-overlay hidden" id="catMgmtOverlay">
   <div class="cat-mgmt-modal">
@@ -1588,6 +1601,7 @@ const AppState = {
   savedCanvasUrl: null,
   canvasSaveKey: null,
   currentConsultId: null,  // 💾 저장으로 생성된 consultation ID
+  pendingConsult: null,    // 환자 미선택 상태에서 상담 종료 시 임시 저장
   sttRaw: '', sttRawFinal: '', sttSummary: '', sttDialogSeparated: '', lastInterimTranscript: '', aiLoading: false,
   birthYear: null, birthMonth: null, birthDay: null,
   snsType: null, snsId: '',
@@ -1693,6 +1707,14 @@ function bindPatientListClick() {
     loadPatientTags();
     closePatientPopup();
     showToast(`${p ? p.name : ''} 선택됐습니다.`, 'success');
+
+    // 상담 후 환자 연결 흐름
+    if (AppState._pendingLink && AppState.pendingConsult && p) {
+      AppState._pendingLink = false;
+      const { canvasUrl, summary, consultId } = AppState.pendingConsult;
+      AppState.pendingConsult = null;
+      _commitConsultSave(p.id, canvasUrl, summary, consultId);
+    }
   });
 }
 
@@ -2839,6 +2861,14 @@ async function savePtRegPopup() {
     renderPatientList();
     closePtRegPopup();
     showToast(`${name} 환자가 등록됐습니다.`, 'success');
+
+    // 상담 후 환자 연결 흐름
+    if (AppState._pendingLink && AppState.pendingConsult && newPt) {
+      AppState._pendingLink = false;
+      const { canvasUrl, summary, consultId } = AppState.pendingConsult;
+      AppState.pendingConsult = null;
+      await _commitConsultSave(newPt.id, canvasUrl, summary, consultId);
+    }
   } catch(e) {
     console.error('환자 등록 실패:', e);
     alert(`저장 실패: ${e.message}`);
@@ -3194,7 +3224,6 @@ async function uploadCanvasImage() {
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 async function saveConsultOnEnd() {
   if (!AppState.connected) return;
-  const patient = getSelectedPatient();
 
   showToast('상담 기록 저장 중...', '');
 
@@ -3202,58 +3231,86 @@ async function saveConsultOnEnd() {
   const canvasUrl = await uploadCanvasImage();
 
   // 2. 오디오 다운로드 (기기 저장)
-  await stopMediaRecorderAndDownload(patient?.name);
+  await stopMediaRecorderAndDownload(getSelectedPatient()?.name);
 
-  // 3. AI 요약 대기 후 DB 저장
-  const saveRecord = async (summary) => {
-    try {
-      const payload = {
-        user_id: AppState.currentUser.id,
-        patient_id: patient?.id || null,
-        title: patient ? `${patient.name} 상담` : '일반 상담',
-        diagnosis_note: summary || AppState.sttRaw || '-',
-        stt_text: AppState.sttRaw || null,
-        stt_summary: summary || null,
-        canvas_image_url: canvasUrl,
-        estimated_total: 0,
-        next_action: '재상담 예정',
-        consult_date: new Date().toISOString().slice(0,10),
-      };
-      // 💾로 이미 생성된 레코드가 있으면 update, 없으면 insert
-      if (AppState.currentConsultId) {
-        const { error } = await AppState.supabase.from('consultations')
-          .update(payload)
-          .eq('id', AppState.currentConsultId);
-        if (error) throw error;
-      } else {
-        const { error } = await AppState.supabase.from('consultations').insert(payload);
-        if (error) throw error;
-      }
-      AppState.currentConsultId = null;
-      showToast('상담 기록이 저장됐습니다.', 'success');
-      loadPrevConsultThumbs();
-      await loadTodayConsultCount();
-      if (patient) { await loadConsultations(); }
-      // 캔버스 초기화
-      clearCanvas();
-      AppState.sttRaw = ''; AppState.sttRawFinal = ''; AppState.sttSummary = '';
-    } catch(e) {
-      showToast(`저장 실패: ${e.message}`, 'warn');
-    }
-  };
-
-  // STT 내용이 있으면 AI 요약 후 저장, 없으면 바로 저장
+  // 3. AI 요약
+  let summary = null;
   if (AppState.sttRaw.trim()) {
     showToast('AI 요약 중... 잠시만 기다려주세요', '');
-    try {
-      await summarizeWithClaude(AppState.sttRaw);
-      await saveRecord(AppState.sttSummary);
-    } catch(e) {
-      await saveRecord(null);
-    }
-  } else {
-    await saveRecord(null);
+    try { await summarizeWithClaude(AppState.sttRaw); summary = AppState.sttSummary; } catch(e) {}
   }
+
+  // 4. 환자 없으면 모달로 연결 요청
+  const patient = getSelectedPatient();
+  if (!patient) {
+    AppState.pendingConsult = { canvasUrl, summary, consultId: AppState.currentConsultId };
+    AppState.currentConsultId = null;
+    document.getElementById('linkPatientOverlay').classList.remove('hidden');
+    return;
+  }
+
+  await _commitConsultSave(patient.id, canvasUrl, summary, AppState.currentConsultId);
+  AppState.currentConsultId = null;
+}
+
+async function _commitConsultSave(patientId, canvasUrl, summary, consultId) {
+  const patient = patientId ? AppState.patients.find(p => p.id === patientId) : null;
+  try {
+    const payload = {
+      user_id: AppState.currentUser.id,
+      patient_id: patientId || null,
+      title: patient ? `${patient.name} 상담` : '일반 상담',
+      diagnosis_note: summary || AppState.sttRaw || '-',
+      stt_text: AppState.sttRaw || null,
+      stt_summary: summary || null,
+      canvas_image_url: canvasUrl,
+      estimated_total: 0,
+      next_action: '재상담 예정',
+      consult_date: new Date().toISOString().slice(0,10),
+    };
+    if (consultId) {
+      const { error } = await AppState.supabase.from('consultations').update(payload).eq('id', consultId);
+      if (error) throw error;
+    } else {
+      const { error } = await AppState.supabase.from('consultations').insert(payload);
+      if (error) throw error;
+    }
+    showToast('상담 기록이 저장됐습니다.', 'success');
+    loadPrevConsultThumbs();
+    await loadTodayConsultCount();
+    if (patient) await loadConsultations();
+    clearCanvas();
+    AppState.sttRaw = ''; AppState.sttRawFinal = ''; AppState.sttSummary = '';
+  } catch(e) {
+    showToast(`저장 실패: ${e.message}`, 'warn');
+  }
+}
+
+function closeLinkPatientModal() {
+  document.getElementById('linkPatientOverlay').classList.add('hidden');
+}
+
+async function linkPatientAndSave(action) {
+  const pending = AppState.pendingConsult;
+  if (!pending) { closeLinkPatientModal(); return; }
+
+  if (action === 'existing') {
+    closeLinkPatientModal();
+    // 환자 선택 팝업 열기 → 선택 후 _pendingLink 플래그로 저장 완료
+    AppState._pendingLink = true;
+    openPatientPopup();
+    return;
+  }
+  if (action === 'new') {
+    closeLinkPatientModal();
+    AppState._pendingLink = true;
+    openPtRegPopup();
+    return;
+  }
+  // 나중에 연결 → 환자 없이 저장
+  AppState.pendingConsult = null;
+  closeLinkPatientModal();
+  await _commitConsultSave(null, pending.canvasUrl, pending.summary, pending.consultId);
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
