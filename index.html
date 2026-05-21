@@ -3455,12 +3455,35 @@ async function uploadTmplImage(file, tmplId, catId) {
 // ── 캔버스 카테고리 로드 (DB → 사이드바 갱신) ──
 async function loadCanvasCategories() {
   if (!AppState.connected) return;
-  const { data: cats } = await AppState.supabase
-    .from('canvas_categories')
-    .select('*, canvas_templates(*)')
-    .eq('user_id', AppState.currentUser.id)
-    .eq('is_active', true)
-    .order('display_order');
+  let cats = null;
+  try {
+    const { data: catData, error: catError } = await AppState.supabase
+      .from('canvas_categories')
+      .select('*')
+      .eq('user_id', AppState.currentUser.id)
+      .eq('is_active', true)
+      .order('display_order');
+    if (catError) throw catError;
+    cats = catData || [];
+
+    if (cats.length) {
+      const catIds = cats.map(c => c.id);
+      const { data: tmplData, error: tmplError } = await AppState.supabase
+        .from('canvas_templates')
+        .select('*')
+        .in('category_id', catIds)
+        .eq('is_active', true)
+        .order('display_order');
+      if (tmplError) console.warn('템플릿 로드 실패:', tmplError.message);
+      const tmpls = tmplData || [];
+      cats.forEach(cat => {
+        cat.canvas_templates = tmpls.filter(t => t.category_id === cat.id);
+      });
+    }
+  } catch(e) {
+    console.error('카테고리 로드 실패:', e);
+    cats = null;
+  }
 
   const catListEl = document.getElementById('canvasCatList');
   if (!catListEl) return;
@@ -4469,6 +4492,7 @@ async function handleLogout() {
 }
 
 async function showMainApp(user) {
+  AppState.connected = true;
   AppState.currentUser = user;
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('mainApp').style.display = 'flex';
@@ -4529,6 +4553,7 @@ async function handleLogin() {
   try {
     const { data, error } = await AppState.supabase.auth.signInWithPassword({ email, password: pw });
     if (error) throw error;
+    AppState.connected = true;
     await showMainApp(data.user);
   } catch(e) { setAuthMsg(`로그인 실패: ${e.message}`, 'error'); }
 }
