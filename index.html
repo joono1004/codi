@@ -1606,6 +1606,7 @@ const AppState = {
   pricePickerOpen: false,
   directInputOpen: false,
   patientTypes: [],
+  linkingConsultId: null,  // 환자 연결 모드: 연결할 상담 ID
 };
 
 const mockSttText = `원장: 현재 오른쪽 아래 어금니 손상이 진행되어 임플란트 또는 크라운 치료가 필요합니다.
@@ -1678,6 +1679,13 @@ function bindPatientListClick() {
     const card = e.target.closest('[data-patient-id]');
     if (!card) return;
     const patientId = card.dataset.patientId;
+
+    // 환자 연결 모드: 상담 기록에 환자를 연결
+    if (AppState.linkingConsultId) {
+      executeLinkPatientToConsult(patientId);
+      return;
+    }
+
     if (patientId !== AppState.selectedPatientId) {
       resetConsultationForm();
       AppState.currentPatientTags = [];
@@ -1821,6 +1829,7 @@ function openPatientPopup() {
   document.getElementById('patientPopupOverlay').classList.remove('hidden');
 }
 function closePatientPopup() {
+  AppState.linkingConsultId = null;
   document.getElementById('patientPopupOverlay').classList.add('hidden');
   document.getElementById('navPtInput')?.blur();
   // 선택된 환자 이름 복원
@@ -5278,6 +5287,13 @@ async function loadConsultations() {
       const memoHtml = item.diagnosis_note && item.diagnosis_note !== '-' ? `
         <div style="margin-top:10px;font-size:12px;color:var(--sub);line-height:1.6;white-space:pre-line;">${item.diagnosis_note}</div>` : '';
 
+      // 환자 연결 버튼 (환자 없이 저장된 상담)
+      const linkPatientBtn = !item.patient_id ? `
+        <button onclick="linkPatientToConsult('${item.id}')"
+          style="margin-top:10px;width:100%;padding:9px;border-radius:10px;border:1px dashed var(--primary);background:var(--primary-soft);color:var(--primary);font-size:13px;font-weight:800;cursor:pointer;">
+          + 환자 연결하기
+        </button>` : '';
+
       // 상담 상태 변경 선택
       const statusSelect = `
         <div style="margin-top:12px;display:flex;align-items:center;gap:8px;">
@@ -5310,6 +5326,7 @@ async function loadConsultations() {
                 ${costHtml}
               </div>
             </div>
+            ${linkPatientBtn}
             ${statusSelect}
           </div>
         </div>`;
@@ -5336,6 +5353,28 @@ async function updateConsultStatus(consultId, status) {
     .eq('id', consultId);
   if (error) { showToast('상태 저장 실패: ' + error.message, 'warn'); return; }
   showToast('상담 상태가 저장됐습니다.', 'success');
+  loadConsultations();
+}
+
+function linkPatientToConsult(consultId) {
+  AppState.linkingConsultId = consultId;
+  openPatientPopup();
+}
+
+async function executeLinkPatientToConsult(patientId) {
+  const consultId = AppState.linkingConsultId;
+  AppState.linkingConsultId = null;
+  if (!consultId || !patientId) return;
+
+  const patient = AppState.patients.find(p => p.id === patientId);
+  const { error } = await AppState.supabase
+    .from('consultations')
+    .update({ patient_id: patientId, title: patient ? `${patient.name} 상담` : '상담 기록' })
+    .eq('id', consultId);
+
+  if (error) { showToast('환자 연결 실패: ' + error.message, 'warn'); return; }
+  showToast(`${patient?.name || ''} 환자와 연결됐습니다.`, 'success');
+  closePatientPopup();
   loadConsultations();
 }
 
