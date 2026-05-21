@@ -2819,7 +2819,10 @@ async function savePtRegPopup() {
   };
 
   try {
-    const { error: insertError } = await AppState.supabase.from('patients').insert(payload);
+    const { error: insertError } = await Promise.race([
+      AppState.supabase.from('patients').insert(payload),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('요청 시간 초과 (10초). 인터넷 연결을 확인해주세요.')), 10000))
+    ]);
     if (insertError) throw insertError;
 
     const { data: newPts, error: selectError } = await AppState.supabase
@@ -4506,9 +4509,10 @@ async function showMainApp(user) {
   renderPatientCount(); renderPatientList(); renderSelectedPatient();
   renderSttState(); setConsultTab('history');
   setTimeout(async () => {
-    initCanvas(); bindCanvasEvents(); bindCanvasTopbar(); bindOpacityControls(); renderCostScreen();
+    try { initCanvas(); bindCanvasEvents(); bindCanvasTopbar(); bindOpacityControls(); renderCostScreen(); }
+    catch(e) { console.error('캔버스 초기화 오류:', e); }
     await loadCanvasCategories();
-    syncCatBars();
+    try { syncCatBars(); } catch(e) {}
     initExplainCardSidebar();
   }, 100);
 }
@@ -4701,7 +4705,11 @@ async function loadPatients() {
       renderSelectedPatient();
       await loadConsultations(); await loadPatientTags();
     }
-  } catch(e) { console.error('환자 로드 실패:',e.message); }
+  } catch(e) {
+    console.error('환자 로드 실패:', e.message);
+    const list = document.getElementById('patientList');
+    if (list) list.innerHTML = `<div class="status-line error" style="cursor:pointer;" onclick="loadPatients()">⚠ 환자 목록 로드 실패: ${e.message}<br><small>클릭하여 재시도</small></div>`;
+  }
 }
 
 /* ── 환자 저장 ── */
@@ -5343,7 +5351,7 @@ async function loadConsultations() {
   try {
     let query = AppState.supabase
       .from('consultations')
-      .select('*, consultation_items(*)')
+      .select('*')
       .eq('user_id', AppState.currentUser.id)
       .order('created_at', { ascending: false })
       .limit(30);
@@ -5364,6 +5372,20 @@ async function loadConsultations() {
       list.innerHTML = `<div class="status-line">${patient ? '저장된 상담 이력이 없습니다.' : '오늘 저장된 상담 기록이 없습니다.'}</div>`;
       return;
     }
+
+    // consultation_items 별도 쿼리 (nested select FK 의존 제거)
+    const consultIds = data.map(c => c.id);
+    const { data: itemRows } = await AppState.supabase
+      .from('consultation_items')
+      .select('*')
+      .in('consultation_id', consultIds)
+      .order('display_order');
+    const itemsMap = {};
+    (itemRows || []).forEach(r => {
+      if (!itemsMap[r.consultation_id]) itemsMap[r.consultation_id] = [];
+      itemsMap[r.consultation_id].push(r);
+    });
+    data.forEach(c => { c.consultation_items = itemsMap[c.id] || []; });
 
     // 카드별 데이터 저장 (STT 텍스트 인라인 onclick에 사용)
     _consultCards = {};
