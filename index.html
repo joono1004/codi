@@ -1271,21 +1271,8 @@
       <div class="panel" style="height:fit-content;">
         <div class="panel-inner">
 
-          <!-- 상담내역 탭 -->
-          <div class="consult-tabs">
-            <button class="consult-tab active" data-consult-tab="history">🗂 상담 이력</button>
-            <button class="consult-tab" data-consult-tab="memo">📝 메모 · 요약</button>
-          </div>
-
-          <!-- 상담 이력 -->
-          <div class="consult-tab-section active" id="ctab-history">
-            <div class="history-list" id="consultationHistoryList">
-              <div class="status-line">환자를 선택하면 상담 이력이 표시됩니다.</div>
-            </div>
-          </div>
-
-          <!-- 메모 · AI 요약 -->
-          <div class="consult-tab-section" id="ctab-memo">
+          <!-- 상담 내역 (통합) -->
+          <div id="ctab-history">
 
             <!-- STT 실시간 상태 -->
             <div class="stt-live-box" id="sttLiveBox">
@@ -1299,7 +1286,7 @@
               <div class="stt-status" id="sttStatusBox" style="font-size:12px;max-height:80px;overflow-y:auto;">STT 원문이 여기에 표시됩니다.</div>
             </div>
 
-            <!-- 메모 작성 -->
+            <!-- 현재 세션 메모 + AI 요약 -->
             <div style="margin-top:12px;">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
                 <label class="label" style="margin:0;">메모</label>
@@ -1308,27 +1295,35 @@
                   <button class="ghost-btn" id="applySttSummaryBtn" style="font-size:11px;padding:4px 10px;">요약 반영</button>
                 </div>
               </div>
-              <textarea id="consultDiagnosisInput" placeholder="상담 내용을 메모하세요. AI 요약 결과를 반영하거나 직접 입력할 수 있습니다." style="min-height:120px;"></textarea>
+              <textarea id="consultDiagnosisInput" placeholder="상담 내용을 메모하세요. AI 요약 결과를 반영하거나 직접 입력할 수 있습니다." style="min-height:80px;"></textarea>
             </div>
 
-            <!-- AI 요약 결과 -->
+            <!-- AI 요약 결과 (현재 세션) -->
             <div class="ai-summary-result" id="aiSummaryResult" style="display:none;margin-top:10px;">
               <div class="ai-label">✦ Gemini AI 요약 결과</div>
               <div class="ai-text" id="sttSummaryOutput"></div>
             </div>
 
-            <!-- STT 원본 접기/펼치기 -->
-            <div style="margin-top:10px;">
+            <!-- STT 원본 접기/펼치기 (현재 세션) -->
+            <div style="margin-top:8px;">
               <button class="ghost-btn" id="toggleSttRawBtn" style="font-size:11px;width:100%;justify-content:space-between;">
                 <span>📄 STT 원본 보기</span><span id="sttRawChev">▶</span>
               </button>
               <div id="sttRawArea" style="display:none;margin-top:6px;">
-                <textarea id="sttRawInput" placeholder="STT 원문" style="min-height:100px;font-size:12px;color:var(--sub);"></textarea>
+                <textarea id="sttRawInput" placeholder="STT 원문" style="min-height:80px;font-size:12px;color:var(--sub);"></textarea>
               </div>
             </div>
 
-            <div class="button-row" style="margin-top:10px;">
+            <div class="button-row" style="margin-top:8px;">
               <button class="ghost-btn" id="resetConsultationBtn">초기화</button>
+            </div>
+
+            <!-- 상담 이력 -->
+            <div style="margin-top:20px;border-top:2px solid var(--line);padding-top:14px;">
+              <div style="font-size:12px;font-weight:900;color:var(--sub);letter-spacing:.04em;margin-bottom:10px;">🗂 상담 이력</div>
+              <div class="history-list" id="consultationHistoryList">
+                <div class="status-line">환자를 선택하면 상담 이력이 표시됩니다.</div>
+              </div>
             </div>
           </div>
 
@@ -3821,9 +3816,7 @@ function bindCanvasTopbar() {
 function openMgmtPanel() {
   document.getElementById('mgmtPanel').classList.add('open');
   document.getElementById('mgmtOverlay').classList.add('open');
-  // 이력 탭이 활성 상태면 자동 로드
-  const historyTab = document.getElementById('ctab-history');
-  if (historyTab?.classList.contains('active')) loadConsultations();
+  loadConsultations();
 }
 function closeMgmtPanel() {
   document.getElementById('mgmtPanel').classList.remove('open');
@@ -4367,14 +4360,10 @@ function getSvg(type) {
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   상담 탭 전환
+   상담 탭 전환 (탭 통합 후 호환 유지)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 function setConsultTab(tabName) {
-  document.querySelectorAll('[data-consult-tab]').forEach(btn =>
-    btn.classList.toggle('active', btn.dataset.consultTab === tabName));
-  document.querySelectorAll('.consult-tab-section').forEach(sec =>
-    sec.classList.toggle('active', sec.id === `ctab-${tabName}`));
-  if (tabName === 'history') loadConsultations();
+  loadConsultations();
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -5212,6 +5201,110 @@ async function saveConsultation() {
   } catch(e){alert(`상담 저장 실패: ${e.message}`);}
 }
 
+let _consultCards = {};
+
+function escapeHtml(str) {
+  return (str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function toggleHistoryRaw(consultId) {
+  const area = document.getElementById(`hraw-area-${consultId}`);
+  const chev = document.getElementById(`hraw-chev-${consultId}`);
+  if (!area) return;
+  const isOpen = area.style.display !== 'none';
+  area.style.display = isOpen ? 'none' : 'block';
+  if (chev) chev.textContent = isOpen ? '▶' : '▼';
+}
+
+async function summarizeConsultCard(consultId) {
+  const card = _consultCards[consultId];
+  if (!card?.sttText) return;
+  const apiKey = AppState.geminiApiKey;
+  if (!apiKey) { alert('AI 요약을 사용하려면 설정에서 Gemini API 키를 입력해주세요.'); openSettingModal(); return; }
+
+  const btn = document.getElementById(`hsum-btn-${consultId}`);
+  const resultEl = document.getElementById(`hsum-result-${consultId}`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> AI 분석 중...'; }
+
+  const prompt = `당신은 치과 상담 기록 전문가입니다.
+아래 STT 원문을 분석하여 바쁜 치과 근무자가 한눈에 파악할 수 있도록 극도로 간결하게 정리하세요.
+
+규칙:
+- 모든 항목은 핵심만 bullet point로 작성
+- "~입니다", "~합니다" 등 어미 절대 사용 금지
+- 명사형/단어형으로 끝낼 것
+- 한 bullet은 15자 이내로
+- 없거나 언급 안 된 항목은 "-" 로 표시
+
+반드시 아래 형식으로만 답변:
+
+【환자 상태】
+• (치아 상태 핵심)
+
+【치료 상담】
+• (설명한 치료/재료 및 제안한 비용)
+
+【환자 반응】
+• (반응/관심사/우려)
+
+【다음 액션】
+• (합의된 다음 단계)
+
+STT 원문:
+${card.sttText}`;
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig:{maxOutputTokens:1000,temperature:0.2} }) }
+    );
+    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error?.message||`HTTP ${res.status}`); }
+    const data = await res.json();
+    const summaryText = (data.candidates?.[0]?.content?.parts?.[0]?.text||'').trim();
+    if (!summaryText) throw new Error('AI 응답이 비어 있습니다.');
+
+    // Supabase에 stt_summary 저장
+    if (AppState.connected) {
+      await AppState.supabase.from('consultations').update({ stt_summary: summaryText }).eq('id', consultId);
+    }
+    _consultCards[consultId].sttSummary = summaryText;
+
+    // 카드 내 요약 결과 표시
+    if (btn) btn.style.display = 'none';
+    if (resultEl) {
+      resultEl.style.display = 'block';
+      resultEl.innerHTML = `
+        <div style="margin-top:10px;padding:10px 12px;border:1px solid #c4b5fd;border-radius:12px;background:#faf5ff;">
+          <div style="font-size:10px;font-weight:900;color:#7c3aed;margin-bottom:6px;">✦ AI 요약</div>
+          <div style="font-size:12px;color:#374151;white-space:pre-line;line-height:1.6;">${escapeHtml(summaryText)}</div>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:6px;">
+          <button class="ghost-btn" style="font-size:12px;flex:1;font-weight:900;"
+            onclick="applyConsultSummary('${consultId}')">메모에 반영</button>
+        </div>`;
+    }
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.innerHTML = '✦ AI 요약'; }
+    showToast('AI 요약 실패: ' + e.message, 'warn');
+  }
+}
+
+async function applyConsultSummary(consultId) {
+  const card = _consultCards[consultId];
+  const summaryText = card?.sttSummary;
+  if (!summaryText) { showToast('요약 내용이 없습니다.', 'warn'); return; }
+  if (!AppState.connected) { showToast('연결 중...', ''); return; }
+
+  const { error } = await AppState.supabase
+    .from('consultations')
+    .update({ diagnosis_note: summaryText })
+    .eq('id', consultId);
+  if (error) { showToast('반영 실패: ' + error.message, 'warn'); return; }
+  showToast('메모에 반영됐습니다.', 'success');
+  loadConsultations();
+}
+
 async function loadConsultations() {
   const patient = getSelectedPatient();
   const list = document.getElementById('consultationHistoryList');
@@ -5241,8 +5334,15 @@ async function loadConsultations() {
       return;
     }
 
+    // 카드별 데이터 저장 (STT 텍스트 인라인 onclick에 사용)
+    _consultCards = {};
+
     list.innerHTML = data.map((item, idx) => {
       const date = new Date(item.created_at).toLocaleDateString('ko-KR', { year:'2-digit', month:'2-digit', day:'2-digit' }).replace(/\. /g,'.').replace('.','');
+
+      // 카드 데이터 저장
+      const rawStt = item.stt_text || item.stt_raw || null;
+      _consultCards[item.id] = { sttText: rawStt, sttSummary: item.stt_summary || null };
 
       // 상담 상태 배지
       const statusText = item.consult_status || '';
@@ -5259,16 +5359,17 @@ async function loadConsultations() {
           ${hasCost  ? `<span class="consult-type-badge" title="비용상담">💰</span>` : ''}
         </div>`;
 
-      // 펼쳐진 본문
+      // 캔버스 썸네일
       const canvasHtml = item.canvas_image_url ? `
         <div class="consult-thumb" onclick="window.open('${item.canvas_image_url}','_blank')">
           <img src="${item.canvas_image_url}" alt="상담 이미지" loading="lazy" />
         </div>` : `<div class="consult-thumb-empty">🎨</div>`;
 
-      const items = (item.consultation_items||[]).sort((a,b)=>a.display_order-b.display_order);
-      const costHtml = items.length ? `
+      // 비용 항목
+      const costItems = (item.consultation_items||[]).sort((a,b)=>a.display_order-b.display_order);
+      const costHtml = costItems.length ? `
         <div style="margin-top:10px;border:1px solid var(--line);border-radius:10px;overflow:hidden;">
-          ${items.map(ci=>`
+          ${costItems.map(ci=>`
             <div style="display:flex;justify-content:space-between;padding:7px 12px;border-bottom:1px solid var(--line);font-size:12px;">
               <span>${ci.item_name} × ${ci.quantity}</span>
               <span style="font-weight:800;color:var(--primary);">${formatKRW(ci.unit_price*ci.quantity)}</span>
@@ -5278,14 +5379,49 @@ async function loadConsultations() {
           </div>
         </div>` : (hasCost ? `<div style="font-size:13px;font-weight:900;color:var(--text);margin-top:6px;">${formatKRW(item.estimated_total||0)}</div>` : '');
 
-      const aiHtml = item.stt_summary ? `
-        <div style="margin-top:10px;padding:10px 12px;border:1px solid #c4b5fd;border-radius:12px;background:#faf5ff;">
-          <div style="font-size:10px;font-weight:900;color:#7c3aed;margin-bottom:6px;">✦ AI 요약</div>
-          <div style="font-size:12px;color:#374151;white-space:pre-line;line-height:1.6;">${item.stt_summary}</div>
-        </div>` : '';
+      // STT 섹션: 상태에 따라 다르게 렌더링
+      const hasDiagnosis = !!(item.diagnosis_note && item.diagnosis_note !== '-');
+      const hasSummary   = !!item.stt_summary;
 
-      const memoHtml = item.diagnosis_note && item.diagnosis_note !== '-' ? `
-        <div style="margin-top:10px;font-size:12px;color:var(--sub);line-height:1.6;white-space:pre-line;">${item.diagnosis_note}</div>` : '';
+      const rawToggleBtn = rawStt ? `
+        <button class="ghost-btn" style="margin-top:8px;font-size:11px;width:100%;justify-content:space-between;"
+          onclick="toggleHistoryRaw('${item.id}')">
+          <span>📄 STT 원본 보기</span><span id="hraw-chev-${item.id}">▶</span>
+        </button>
+        <div id="hraw-area-${item.id}" style="display:none;margin-top:6px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:12px;color:var(--sub);white-space:pre-line;line-height:1.5;max-height:120px;overflow-y:auto;">${escapeHtml(rawStt)}</div>` : '';
+
+      let sttSection = '';
+      if (hasDiagnosis) {
+        // 메모 반영 완료 상태: 메모 표시 + STT 원본 보기 토글
+        sttSection = `
+          <div style="margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--bg);">
+            <div style="font-size:10px;font-weight:900;color:var(--sub);margin-bottom:4px;">📝 메모</div>
+            <div style="font-size:12px;color:var(--text);white-space:pre-line;line-height:1.6;">${escapeHtml(item.diagnosis_note)}</div>
+          </div>
+          ${rawToggleBtn}`;
+      } else if (hasSummary) {
+        // AI 요약 존재, 아직 반영 전: 요약 표시 + 반영 버튼
+        sttSection = `
+          <div style="margin-top:10px;padding:10px 12px;border:1px solid #c4b5fd;border-radius:12px;background:#faf5ff;">
+            <div style="font-size:10px;font-weight:900;color:#7c3aed;margin-bottom:6px;">✦ AI 요약</div>
+            <div style="font-size:12px;color:#374151;white-space:pre-line;line-height:1.6;">${escapeHtml(item.stt_summary)}</div>
+          </div>
+          <div style="margin-top:8px;display:flex;gap:6px;">
+            <button class="ghost-btn" style="font-size:12px;flex:1;font-weight:900;"
+              onclick="applyConsultSummary('${item.id}')">메모에 반영</button>
+          </div>
+          ${rawToggleBtn}`;
+      } else if (rawStt) {
+        // STT 원본만 있음: 원본 표시 + AI 요약 버튼
+        sttSection = `
+          <div style="margin-top:10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);">
+            <div style="font-size:10px;font-weight:900;color:var(--sub);margin-bottom:4px;">🎤 STT 원본</div>
+            <div style="font-size:12px;color:var(--sub);white-space:pre-line;line-height:1.5;max-height:80px;overflow-y:auto;">${escapeHtml(rawStt)}</div>
+          </div>
+          <button class="ai-btn" id="hsum-btn-${item.id}" style="margin-top:8px;font-size:12px;width:100%;"
+            onclick="summarizeConsultCard('${item.id}')">✦ AI 요약</button>
+          <div id="hsum-result-${item.id}" style="display:none;"></div>`;
+      }
 
       // 환자 연결 버튼 (환자 없이 저장된 상담)
       const linkPatientBtn = !item.patient_id ? `
@@ -5321,8 +5457,7 @@ async function loadConsultations() {
             <div class="consult-body-grid">
               ${canvasHtml}
               <div>
-                ${aiHtml}
-                ${memoHtml}
+                ${sttSection}
                 ${costHtml}
               </div>
             </div>
@@ -5563,9 +5698,7 @@ function bindEvents() {
   document.getElementById('patientSearchInput')?.addEventListener('input', renderPatientList);
   bindPatientListClick();
 
-  // 상담 탭
-  document.querySelectorAll('[data-consult-tab]').forEach(btn =>
-    btn.addEventListener('click', () => setConsultTab(btn.dataset.consultTab)));
+  // 상담 탭 (통합 후 제거됨 - setConsultTab은 호환용으로 유지)
 
   // 비용상담 화면
   document.getElementById('openPricePickerBtn')?.addEventListener('click', togglePricePicker);
