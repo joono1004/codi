@@ -4665,7 +4665,10 @@ async function loadPatients() {
   try {
     const timeout = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('timeout')), 10000));
-    const query = AppState.supabase.from('patients').select('*').order('created_at',{ascending:false});
+    const query = AppState.supabase
+      .from('patients').select('*')
+      .eq('user_id', AppState.currentUser.id)
+      .order('created_at',{ascending:false});
     const { data, error } = await Promise.race([query, timeout]);
     if(error) throw error;
     AppState.patients = data||[];
@@ -5163,9 +5166,11 @@ async function saveConsultation() {
     patient_id:patient.id,
     title:document.getElementById('consultTitleInput').value.trim()||'상담 기록',
     diagnosis_note:document.getElementById('consultDiagnosisInput').value.trim()||'-',
+    stt_text:AppState.sttRaw||null,
     stt_raw:AppState.sttRaw||null,
     stt_summary:AppState.sttSummary||null,
     estimated_total:total,
+    consult_date: new Date().toISOString().slice(0,10),
     next_action: document.getElementById('consultPlanInput')?.value || '재상담 예정'
   };
 
@@ -5323,7 +5328,9 @@ async function loadConsultations() {
       query = query.eq('patient_id', patient.id);
     } else {
       const today = new Date().toISOString().slice(0,10);
-      query = query.eq('consult_date', today);
+      query = query
+        .gte('created_at', today + 'T00:00:00')
+        .lte('created_at', today + 'T23:59:59');
     }
 
     const { data, error } = await query;
