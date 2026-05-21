@@ -4667,7 +4667,6 @@ async function loadPatients() {
       setTimeout(() => reject(new Error('timeout')), 10000));
     const query = AppState.supabase
       .from('patients').select('*')
-      .eq('user_id', AppState.currentUser.id)
       .order('created_at',{ascending:false});
     const { data, error } = await Promise.race([query, timeout]);
     if(error) throw error;
