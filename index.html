@@ -1622,6 +1622,7 @@ async function loadTodayConsultCount() {
     const today = new Date().toISOString().split('T')[0];
     const { data, error } = await AppState.supabase
       .from('consultations').select('patient_id')
+      .eq('user_id', AppState.currentUser.id)
       .gte('created_at', today+'T00:00:00').lte('created_at', today+'T23:59:59');
     if (error) throw error;
     const unique = new Set((data||[]).map(r=>r.patient_id));
@@ -4667,6 +4668,7 @@ async function loadPatients() {
       setTimeout(() => reject(new Error('timeout')), 10000));
     const query = AppState.supabase
       .from('patients').select('*')
+      .eq('user_id', AppState.currentUser.id)
       .order('created_at',{ascending:false});
     const { data, error } = await Promise.race([query, timeout]);
     if(error) throw error;
