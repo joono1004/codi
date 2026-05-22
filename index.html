@@ -5137,24 +5137,27 @@ function startBrowserStt() {
     renderSttState();
   };
 
-  r.onend = () => {
-    // 상담 세션 중이면 자동 재시작
-    if (SessionState.isActive && AppState.isRecording !== false) {
-      try { r.start(); } catch(e) {
-        // 재시작 실패 시 새 인스턴스로 재시도
-        setTimeout(() => { if (SessionState.isActive) startBrowserStt(); }, 300);
-      }
-      return;
+  r.onerror = e => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+      // 권한 거부 - 재시작 불가, 완전 종료
+      AppState.isRecording = false;
+      AppState.recognition = null;
+      AppState.sttRaw = normalizeSpaces(AppState.sttRawFinal);
+      renderSttState();
     }
-    AppState.isRecording = false;
-    AppState.sttRaw = normalizeSpaces(AppState.sttRawFinal);
-    renderSttState();
+    // no-speech, network, audio-capture 등은 onend에서 재시작 처리
   };
 
-  r.onerror = e => {
-    // 네트워크/권한 오류가 아니면 재시작 시도
-    if (SessionState.isActive && e.error !== 'not-allowed' && e.error !== 'service-not-allowed') {
-      setTimeout(() => { if (SessionState.isActive) startBrowserStt(); }, 500);
+  r.onend = () => {
+    // 권한 오류로 이미 종료된 경우
+    if (AppState.recognition !== r) return;
+
+    if (SessionState.isActive && AppState.isRecording !== false) {
+      // 상담 중 - 잠시 멈춤/오류 후 자동 재시작
+      AppState.recognition = null;
+      setTimeout(() => {
+        if (SessionState.isActive && AppState.isRecording !== false) startBrowserStt();
+      }, 300);
       return;
     }
     AppState.isRecording = false;
