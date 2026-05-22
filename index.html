@@ -492,6 +492,7 @@
     .cost-item-qty button { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: 800; }
     .cost-item-qty span { min-width: 22px; text-align: center; font-size: 14px; font-weight: 800; }
     .cost-item-price { font-size: 14px; font-weight: 900; color: var(--text); min-width: 90px; text-align: right; }
+    .cost-item-unit { font-size: 12px; font-weight: 700; color: var(--sub); min-width: 80px; text-align: right; }
     .cost-item-del { width: 28px; height: 28px; border-radius: 8px; border: none; background: transparent; cursor: pointer; color: #ccc; font-size: 16px; display: flex; align-items: center; justify-content: center; transition: .15s; }
     .cost-item-del:hover { color: #e24b4a; background: #fff5f5; }
     .cost-item-copy-btn { padding: 3px 8px; border-radius: 8px; border: 1px solid var(--primary); background: transparent; color: var(--primary); font-size: 10px; font-weight: 800; cursor: pointer; white-space: nowrap; transition: .15s; flex-shrink: 0; }
@@ -3978,6 +3979,7 @@ function renderCostItems() {
         <span>${item.qty}</span>
         <button onclick="changeCostItemQty(${item.id},+1)">+</button>
       </div>
+      <div class="cost-item-unit">${formatKRW(item.unitPrice)}</div>
       <div class="cost-item-price" title="클릭하면 금액 수정">${formatKRW(item.unitPrice * item.qty)}</div>
       <button class="cost-item-del" onclick="removeCostItem(${item.id})">✕</button>`;
 
@@ -4110,6 +4112,7 @@ function renderCompare() {
             <span>${item.qty}</span>
             <button onclick="changeCostItemQtyQ(${qi},${item.id},+1)">+</button>
           </div>
+          <div class="cost-item-unit" style="font-size:11px;">${formatKRW(item.unitPrice)}</div>
           <div class="cost-item-price" style="font-size:12px;" title="클릭하면 금액 수정">${formatKRW(item.unitPrice * item.qty)}</div>
           <button class="cost-item-del" onclick="removeCostItemQ(${qi},${item.id})">✕</button>`;
 
