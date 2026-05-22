@@ -532,9 +532,10 @@
     .cost-add-item-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
 
     /* 항목별 할인 */
-    .cost-item-disc-btn { font-size: 11px; padding: 3px 8px; border-radius: 7px; border: 1px solid #fca5a5; background: #fff5f5; color: #dc2626; font-weight: 800; cursor: pointer; white-space: nowrap; flex-shrink: 0; opacity: 0; transition: opacity .15s; }
-    .cost-item-row:hover .cost-item-disc-btn { opacity: 1; }
-    .cost-item-disc-btn:hover { background: #fee2e2; }
+    .cost-item-disc-btn { font-size: 11px; padding: 3px 8px; border-radius: 7px; border: 1px solid #bfdbfe; background: #eff6ff; color: #3b82f6; font-weight: 800; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+    .cost-item-disc-btn:hover { background: #dbeafe; border-color: #93c5fd; }
+    .cost-item-price-original { font-size: 12px; font-weight: 700; color: #9ca3af; text-decoration: line-through; text-align: right; }
+    .cost-item-price-final { font-size: 14px; font-weight: 900; color: #dc2626; text-align: right; }
     .cost-item-discount-row { display: flex; align-items: center; gap: 8px; padding: 6px 14px 6px 24px; border-radius: 10px; background: #fff5f5; border: 1px solid #fecaca; }
     .cost-item-discount-label { font-size: 12px; color: #dc2626; font-weight: 800; flex: 1; }
     .cost-item-discount-amount { font-size: 13px; font-weight: 900; color: #dc2626; min-width: 80px; text-align: right; }
@@ -4000,7 +4001,13 @@ function renderCostItems() {
         <button onclick="changeCostItemQty(${item.id},+1)">+</button>
       </div>
       <div class="cost-item-unit">${formatKRW(item.unitPrice)}</div>
-      <div class="cost-item-price" title="클릭하면 금액 수정">${formatKRW(item.unitPrice * item.qty)}</div>
+      ${item.itemDiscount ? `
+        <div style="display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0;">
+          <span class="cost-item-price-original">${formatKRW(item.unitPrice * item.qty)}</span>
+          <span class="cost-item-price-final">${formatKRW(item.unitPrice * item.qty - calcItemDiscount(item))}</span>
+        </div>` : `
+        <div class="cost-item-price" title="클릭하면 금액 수정">${formatKRW(item.unitPrice * item.qty)}</div>`
+      }
       <button class="cost-item-disc-btn" data-disc-id="${item.id}">할인</button>
       <button class="cost-item-del" onclick="removeCostItem(${item.id})">✕</button>`;
 
