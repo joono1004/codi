@@ -3218,11 +3218,7 @@ async function saveConsultOnEnd() {
   const canvasUrl = await uploadCanvasImage();
   await stopMediaRecorderAndDownload(getSelectedPatient()?.name);
 
-  let summary = null;
-  if (AppState.sttRaw.trim()) {
-    showToast('AI 요약 중... 잠시만 기다려주세요', '');
-    try { await summarizeWithClaude(AppState.sttRaw); summary = AppState.sttSummary; } catch(e) {}
-  }
+  const summary = AppState.sttSummary || null;
 
   const patient = getSelectedPatient();
   const consultId = AppState.currentConsultId;
