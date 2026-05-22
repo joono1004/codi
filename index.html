@@ -534,11 +534,10 @@
     /* 항목별 할인 */
     .cost-item-disc-btn { font-size: 11px; padding: 3px 8px; border-radius: 7px; border: 1px solid #bfdbfe; background: #eff6ff; color: #3b82f6; font-weight: 800; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
     .cost-item-disc-btn:hover { background: #dbeafe; border-color: #93c5fd; }
-    .cost-item-price-original { font-size: 12px; font-weight: 700; color: #9ca3af; text-decoration: line-through; text-align: right; }
+    .cost-item-price-original { font-size: 11px; font-weight: 700; color: #9ca3af; text-decoration: line-through; text-align: right; }
     .cost-item-price-final { font-size: 14px; font-weight: 900; color: #2563eb; text-align: right; }
-    .cost-item-discount-row { display: flex; align-items: center; gap: 8px; padding: 4px 14px 4px 24px; }
-    .cost-item-discount-label { font-size: 12px; color: #2563eb; font-weight: 800; flex: 1; }
-    .cost-item-discount-amount { font-size: 13px; font-weight: 900; color: #2563eb; min-width: 80px; text-align: right; }
+    .cost-item-disc-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 20px; background: #eff6ff; border: 1px solid #bfdbfe; font-size: 11px; font-weight: 800; color: #2563eb; white-space: nowrap; flex-shrink: 0; }
+    .disc-remove-btn { background: none; border: none; color: #93c5fd; font-size: 11px; cursor: pointer; padding: 0; line-height: 1; font-weight: 900; }
     .cost-item-disc-input-row { padding: 8px 12px; background: #fff5f5; border: 1px solid #fecaca; border-radius: 10px; overflow-x: auto; }
     .cost-item-disc-input-row input { width: auto; }
     .disc-custom-input::-webkit-outer-spin-button,
@@ -3993,6 +3992,13 @@ function renderCostItems() {
     const row = document.createElement('div');
     row.className = 'cost-item-row';
     const isCustom = !!item.isCustom;
+    const hasDiscount = !!item.itemDiscount;
+    const totalPrice = item.unitPrice * item.qty;
+    const discAmt = calcItemDiscount(item);
+    const discLabel = hasDiscount
+      ? (item.itemDiscount.type === 'percent' ? `${item.itemDiscount.value}%` : formatKRW(item.itemDiscount.value))
+      : '';
+
     row.innerHTML = `
       <div class="cost-item-name${isCustom ? ' cost-item-name-custom' : ''}" title="${isCustom ? '클릭하면 이름 수정' : ''}" style="${isCustom ? 'color:var(--primary);cursor:pointer;' : ''}">${item.name}</div>
       <div class="cost-item-qty">
@@ -4001,14 +4007,17 @@ function renderCostItems() {
         <button onclick="changeCostItemQty(${item.id},+1)">+</button>
       </div>
       <div class="cost-item-unit">${formatKRW(item.unitPrice)}</div>
-      ${item.itemDiscount ? `
-        <div style="display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0;">
-          <span class="cost-item-price-original">${formatKRW(item.unitPrice * item.qty)}</span>
-          <span class="cost-item-price-final">${formatKRW(item.unitPrice * item.qty - calcItemDiscount(item))}</span>
-        </div>` : `
-        <div class="cost-item-price" title="클릭하면 금액 수정">${formatKRW(item.unitPrice * item.qty)}</div>`
+      ${hasDiscount ? `
+        <div style="display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0;min-width:90px;">
+          <span class="cost-item-price-original">${formatKRW(totalPrice)}</span>
+          <span class="cost-item-price-final">${formatKRW(totalPrice - discAmt)}</span>
+        </div>
+        <span class="cost-item-disc-badge">
+          ${discLabel} <button class="disc-remove-btn">✕</button>
+        </span>` : `
+        <div class="cost-item-price" title="클릭하면 금액 수정">${formatKRW(totalPrice)}</div>
+        <button class="cost-item-disc-btn">할인</button>`
       }
-      <button class="cost-item-disc-btn" data-disc-id="${item.id}">할인</button>
       <button class="cost-item-del" onclick="removeCostItem(${item.id})">✕</button>`;
 
     if (isCustom) {
@@ -4058,6 +4067,14 @@ function renderCostItems() {
       priceEl.addEventListener('touchend', e => { e.preventDefault(); startEdit(); });
     }
 
+    // 할인 버튼 or 뱃지 이벤트
+    row.querySelector('.cost-item-disc-btn')?.addEventListener('click', () => showItemDiscountInput(item, row, area));
+    row.querySelector('.disc-remove-btn')?.addEventListener('click', e => {
+      e.stopPropagation();
+      item.itemDiscount = null;
+      renderCostAll();
+    });
+
     // 드래그 순서변경
     row.draggable = true;
     row.dataset.itemId = item.id;
@@ -4087,12 +4104,6 @@ function renderCostItems() {
     });
 
     area.appendChild(row);
-    // 할인 버튼 이벤트 연결
-    row.querySelector('.cost-item-disc-btn').addEventListener('click', () => showItemDiscountInput(item, row, area));
-    // 기존 할인이 있으면 할인 행 렌더
-    if (item.itemDiscount) {
-      area.appendChild(createDiscountRow(item));
-    }
   });
 
   // + 항목 추가 버튼 (항상 하나만)
@@ -4178,8 +4189,7 @@ function showItemDiscountInput(item, row, area) {
   else if (d && d.type === 'percent') renderInputRow(d.value, false, 0);
   else renderInputRow(null, false, 0);
 
-  const existingDiscRow = area.querySelector(`.disc-result-row-${item.id}`);
-  existingDiscRow ? existingDiscRow.after(inputRow) : row.after(inputRow);
+  row.after(inputRow);
 }
 
 function createDiscountRow(item) {
