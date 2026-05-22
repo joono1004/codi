@@ -901,6 +901,16 @@
   <!-- ══ 화면 1: 치료 상담 (캔버스) ══ -->
   <div class="screen active" id="screen-treat">
 
+    <!-- 모바일 안내 메시지 -->
+    <div id="treat-mobile-msg" style="display:none; flex:1; align-items:center; justify-content:center; flex-direction:column; gap:12px; color:var(--sub); padding:40px 20px; text-align:center;">
+      <div style="font-size:40px;">🖥️</div>
+      <div style="font-size:16px; font-weight:800; color:var(--text);">PC에서 이용해주세요</div>
+      <div style="font-size:13px; line-height:1.6;">치료 상담 캔버스는<br>PC 환경에서만 사용 가능합니다.</div>
+    </div>
+
+    <!-- 캔버스 실제 콘텐츠 -->
+    <div id="treat-canvas-content" style="display:flex; flex-direction:column; flex:1; min-height:0;">
+
     <!-- 태블릿 세로용 카테고리 가로 바 -->
     <div class="treat-body">
 
@@ -1051,6 +1061,7 @@
 
       </div>
     </div>
+    </div><!-- /treat-canvas-content -->
   </div>
 
   <!-- ══ 화면 2: 비용 상담 ══ -->
@@ -3751,6 +3762,11 @@ function switchScreen(name) {
     t.classList.toggle('active', t.dataset.screen === name));
   document.querySelectorAll('.screen').forEach(s =>
     s.classList.toggle('active', s.id === `screen-${name}`));
+  if (name === 'treat') {
+    const isMobile = window.innerWidth <= 768;
+    document.getElementById('treat-mobile-msg').style.display = isMobile ? 'flex' : 'none';
+    document.getElementById('treat-canvas-content').style.display = isMobile ? 'none' : 'flex';
+  }
   if (name === 'patient') loadConsultations();
   if (name === 'consult') {
     AppState.currentTab = 'consult';
@@ -5663,6 +5679,12 @@ function bindEvents() {
   // ── 네비게이션 탭 ──
   document.querySelectorAll('.nav-tab').forEach(btn =>
     btn.addEventListener('click', () => switchScreen(btn.dataset.screen)));
+
+  // 초기 로드 시 모바일이면 캔버스 숨김
+  if (window.innerWidth <= 768) {
+    document.getElementById('treat-mobile-msg').style.display = 'flex';
+    document.getElementById('treat-canvas-content').style.display = 'none';
+  }
 
   // ── 의료진 패널 (레거시 - 비활성) ──
 
