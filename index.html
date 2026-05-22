@@ -4134,13 +4134,13 @@ function showItemDiscountInput(item, row, area) {
       btn.addEventListener('click', () => renderInputRow(Number(btn.dataset.pct), false, 0));
     });
 
-    // 직접입력 버튼
-    inputRow.querySelector('.disc-custom-btn').addEventListener('click', () => {
+    // 금액입력 버튼
+    inputRow.querySelector('.disc-custom-btn')?.addEventListener('click', () => {
       renderInputRow(null, true, 0);
       inputRow.querySelector('.disc-custom-input')?.focus();
     });
 
-    // 직접입력 금액 실시간 미리보기
+    // 금액 실시간 미리보기
     inputRow.querySelector('.disc-custom-input')?.addEventListener('input', e => {
       const val = Number(e.target.value) || 0;
       inputRow.querySelector('.disc-preview').textContent = val > 0 ? `-${formatKRW(val)}` : '';
