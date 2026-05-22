@@ -531,6 +531,14 @@
     .cost-add-item-btn { width: 100%; padding: 10px; border-radius: 10px; border: 1.5px dashed var(--line); background: transparent; color: var(--sub); font-size: 13px; font-weight: 800; cursor: pointer; transition: .15s; text-align: center; margin-top: 2px; }
     .cost-add-item-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
 
+    /* 항목별 할인 */
+    .cost-item-disc-btn { font-size: 11px; padding: 3px 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg); color: var(--sub); font-weight: 800; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+    .cost-item-disc-btn:hover { border-color: #dc2626; color: #dc2626; }
+    .cost-item-discount-row { display: flex; align-items: center; gap: 8px; padding: 6px 14px 6px 24px; border-radius: 10px; background: #fff5f5; border: 1px solid #fecaca; }
+    .cost-item-discount-label { font-size: 12px; color: #dc2626; font-weight: 800; flex: 1; }
+    .cost-item-discount-amount { font-size: 13px; font-weight: 900; color: #dc2626; min-width: 80px; text-align: right; }
+    .cost-item-disc-input-row { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: #fff5f5; border: 1px solid #fecaca; border-radius: 10px; flex-wrap: wrap; }
+
     /* 견적 탭 + 버튼 */
     .quote-tabs { display: flex; border-bottom: 0.5px solid var(--line); background: var(--panel); flex-shrink: 0; }
     .quote-tab { flex: 1; padding: 10px 8px; font-size: 13px; font-weight: 800; text-align: center; cursor: pointer; border: none; background: transparent; color: var(--sub); border-bottom: 2.5px solid transparent; transition: .15s; }
@@ -3921,8 +3929,15 @@ let activeQuoteIdx = 0; // 현재 편집 중인 견적
 function isCompareMode() { return quotes.length >= 2; }
 function getActiveQuote() { return quotes[activeQuoteIdx]; }
 
+function calcItemDiscount(item) {
+  if (!item.itemDiscount) return 0;
+  const base = item.unitPrice * item.qty;
+  if (item.itemDiscount.type === 'percent') return Math.round(base * item.itemDiscount.value / 100);
+  return Math.min(item.itemDiscount.value, base);
+}
+
 function calcQuote(q) {
-  const subtotal = q.items.reduce((s, i) => s + i.unitPrice * i.qty, 0);
+  const subtotal = q.items.reduce((s, i) => s + i.unitPrice * i.qty - calcItemDiscount(i), 0);
   const discountAmt = Math.round(subtotal * q.discountRate / 100);
   return { subtotal, discountAmt, total: subtotal - discountAmt };
 }
@@ -3981,6 +3996,7 @@ function renderCostItems() {
       </div>
       <div class="cost-item-unit">${formatKRW(item.unitPrice)}</div>
       <div class="cost-item-price" title="클릭하면 금액 수정">${formatKRW(item.unitPrice * item.qty)}</div>
+      <button class="cost-item-disc-btn" data-disc-id="${item.id}">할인</button>
       <button class="cost-item-del" onclick="removeCostItem(${item.id})">✕</button>`;
 
     if (isCustom) {
@@ -4057,6 +4073,12 @@ function renderCostItems() {
     });
 
     area.appendChild(row);
+    // 할인 버튼 이벤트 연결
+    row.querySelector('.cost-item-disc-btn').addEventListener('click', () => showItemDiscountInput(item, row, area));
+    // 기존 할인이 있으면 할인 행 렌더
+    if (item.itemDiscount) {
+      area.appendChild(createDiscountRow(item));
+    }
   });
 
   // + 항목 추가 버튼 (항상 하나만)
@@ -4065,6 +4087,74 @@ function renderCostItems() {
   addItemBtn.textContent = '+ 항목 추가';
   addItemBtn.addEventListener('click', () => addInlineItem(0));
   area.appendChild(addItemBtn);
+}
+
+function showItemDiscountInput(item, row, area) {
+  // 이미 입력 행이 있으면 제거 (토글)
+  const existing = area.querySelector(`.disc-input-row-${item.id}`);
+  if (existing) { existing.remove(); return; }
+
+  const inputRow = document.createElement('div');
+  inputRow.className = `cost-item-disc-input-row disc-input-row-${item.id}`;
+  inputRow.innerHTML = `
+    <span style="font-size:12px;font-weight:800;color:#dc2626;flex-shrink:0;">할인</span>
+    <select class="disc-type-sel" style="border:1px solid #fecaca;border-radius:7px;padding:3px 6px;font-size:12px;font-weight:800;background:#fff;">
+      <option value="percent">%</option>
+      <option value="fixed">금액</option>
+    </select>
+    <input class="disc-val-input" type="number" min="0" placeholder="0" style="width:80px;border:1px solid #fecaca;border-radius:7px;padding:4px 8px;font-size:13px;font-weight:800;" />
+    <button class="disc-confirm-btn" style="padding:4px 12px;border-radius:7px;background:#dc2626;color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;">확인</button>
+    <button class="disc-cancel-btn" style="padding:4px 10px;border-radius:7px;background:transparent;border:1px solid #fecaca;color:#dc2626;font-size:12px;font-weight:800;cursor:pointer;">취소</button>
+  `;
+
+  // 기존 할인값 미리 채우기
+  if (item.itemDiscount) {
+    inputRow.querySelector('.disc-type-sel').value = item.itemDiscount.type;
+    inputRow.querySelector('.disc-val-input').value = item.itemDiscount.value;
+  }
+
+  // 기존 할인 행 뒤에 삽입, 없으면 row 바로 뒤에 삽입
+  const existingDiscRow = area.querySelector(`.disc-result-row-${item.id}`);
+  if (existingDiscRow) {
+    existingDiscRow.after(inputRow);
+  } else {
+    row.after(inputRow);
+  }
+  inputRow.querySelector('.disc-val-input').focus();
+
+  inputRow.querySelector('.disc-confirm-btn').addEventListener('click', () => {
+    const type = inputRow.querySelector('.disc-type-sel').value;
+    const value = Number(inputRow.querySelector('.disc-val-input').value) || 0;
+    if (value > 0) {
+      item.itemDiscount = { type, value };
+    } else {
+      item.itemDiscount = null;
+    }
+    renderCostAll();
+  });
+
+  inputRow.querySelector('.disc-cancel-btn').addEventListener('click', () => {
+    inputRow.remove();
+  });
+}
+
+function createDiscountRow(item) {
+  const discAmt = calcItemDiscount(item);
+  const label = item.itemDiscount.type === 'percent'
+    ? `↳ 할인 ${item.itemDiscount.value}%`
+    : `↳ 할인 (직접입력)`;
+  const div = document.createElement('div');
+  div.className = `cost-item-discount-row disc-result-row-${item.id}`;
+  div.innerHTML = `
+    <span class="cost-item-discount-label">${label}</span>
+    <span class="cost-item-discount-amount">-${formatKRW(discAmt)}</span>
+    <button class="cost-item-del" style="color:#fca5a5;" title="할인 제거">✕</button>
+  `;
+  div.querySelector('.cost-item-del').addEventListener('click', () => {
+    item.itemDiscount = null;
+    renderCostAll();
+  });
+  return div;
 }
 
 function renderCostSummary() {
