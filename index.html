@@ -4109,14 +4109,18 @@ function showItemDiscountInput(item, row, area) {
 
     inputRow.innerHTML = `
       <div style="display:flex;align-items:center;gap:4px;flex-wrap:nowrap;">
-        ${presets.map(p => `
-          <button class="disc-preset-btn" data-pct="${p}" style="padding:4px 10px;border-radius:20px;border:1px solid ${(!customMode && selectedPct===p)?'#dc2626':'#fecaca'};background:${(!customMode && selectedPct===p)?'#dc2626':'#fff'};color:${(!customMode && selectedPct===p)?'#fff':'#dc2626'};font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;">${p}%</button>
-        `).join('')}
-        <button class="disc-custom-btn" style="padding:4px 10px;border-radius:20px;border:1px solid ${customMode?'#dc2626':'#fecaca'};background:${customMode?'#dc2626':'#fff'};color:${customMode?'#fff':'#dc2626'};font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;">직접입력</button>
-        ${customMode ? `<input class="disc-custom-input" type="number" min="0" placeholder="할인금액" value="${customVal||''}" style="width:100px;border:1px solid #fecaca;border-radius:8px;padding:4px 8px;font-size:13px;font-weight:800;background:#fff;" />` : ''}
-        <span class="disc-preview" style="font-size:13px;font-weight:900;color:#dc2626;min-width:60px;text-align:right;">${preview}</span>
-        <button class="disc-confirm-btn" style="padding:4px 12px;border-radius:8px;background:#dc2626;color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;">확인</button>
-        <button class="disc-cancel-btn" style="padding:4px 10px;border-radius:8px;background:transparent;border:1px solid #fecaca;color:#dc2626;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;">취소</button>
+        <div style="display:flex;align-items:center;gap:4px;flex:1;flex-wrap:nowrap;">
+          ${presets.map(p => `
+            <button class="disc-preset-btn" data-pct="${p}" style="padding:4px 10px;border-radius:20px;border:1px solid ${(!customMode && selectedPct===p)?'#dc2626':'#fecaca'};background:${(!customMode && selectedPct===p)?'#dc2626':'#fff'};color:${(!customMode && selectedPct===p)?'#fff':'#dc2626'};font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;">${p}%</button>
+          `).join('')}
+          <button class="disc-custom-btn" style="padding:4px 10px;border-radius:20px;border:1px solid ${customMode?'#dc2626':'#fecaca'};background:${customMode?'#dc2626':'#fff'};color:${customMode?'#fff':'#dc2626'};font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;">금액입력</button>
+          ${customMode ? `<input class="disc-custom-input" type="number" min="0" placeholder="할인금액" value="${customVal||''}" style="width:100px;border:1px solid #fecaca;border-radius:8px;padding:4px 8px;font-size:13px;font-weight:800;background:#fff;" />` : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+          <span class="disc-preview" style="font-size:13px;font-weight:900;color:#dc2626;">${preview}</span>
+          <button class="disc-confirm-btn" style="padding:4px 12px;border-radius:8px;background:#dc2626;color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;">확인</button>
+          <button class="disc-cancel-btn" style="padding:4px 10px;border-radius:8px;background:transparent;border:1px solid #fecaca;color:#dc2626;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;">취소</button>
+        </div>
       </div>
     `;
 
