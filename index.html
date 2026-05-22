@@ -538,8 +538,7 @@
     .cost-item-discount-row { display: flex; align-items: center; gap: 8px; padding: 6px 14px 6px 24px; border-radius: 10px; background: #fff5f5; border: 1px solid #fecaca; }
     .cost-item-discount-label { font-size: 12px; color: #dc2626; font-weight: 800; flex: 1; }
     .cost-item-discount-amount { font-size: 13px; font-weight: 900; color: #dc2626; min-width: 80px; text-align: right; }
-    .cost-item-disc-input-row { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: #fff5f5; border: 1px solid #fecaca; border-radius: 10px; }
-    .cost-item-disc-input-row select,
+    .cost-item-disc-input-row { padding: 8px 12px; background: #fff5f5; border: 1px solid #fecaca; border-radius: 10px; overflow-x: auto; }
     .cost-item-disc-input-row input { width: auto; }
 
     /* 견적 탭 + 버튼 */
@@ -4093,51 +4092,76 @@ function renderCostItems() {
 }
 
 function showItemDiscountInput(item, row, area) {
-  // 이미 입력 행이 있으면 제거 (토글)
   const existing = area.querySelector(`.disc-input-row-${item.id}`);
   if (existing) { existing.remove(); return; }
 
+  const basePrice = item.unitPrice * item.qty;
+  const presets = [5, 10, 15, 20];
+
   const inputRow = document.createElement('div');
   inputRow.className = `cost-item-disc-input-row disc-input-row-${item.id}`;
-  inputRow.innerHTML = `
-    <select class="disc-type-sel" style="border:1px solid #fecaca;border-radius:7px;padding:4px 8px;font-size:12px;font-weight:800;background:#fff;flex-shrink:0;">
-      <option value="percent">% 할인</option>
-      <option value="fixed">금액 할인</option>
-    </select>
-    <input class="disc-val-input" type="number" min="0" placeholder="0" style="flex:1;min-width:60px;border:1px solid #fecaca;border-radius:7px;padding:4px 8px;font-size:13px;font-weight:800;" />
-    <button class="disc-confirm-btn" style="padding:4px 12px;border-radius:7px;background:#dc2626;color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;flex-shrink:0;">확인</button>
-    <button class="disc-cancel-btn" style="padding:4px 10px;border-radius:7px;background:transparent;border:1px solid #fecaca;color:#dc2626;font-size:12px;font-weight:800;cursor:pointer;flex-shrink:0;">취소</button>
-  `;
 
-  // 기존 할인값 미리 채우기
-  if (item.itemDiscount) {
-    inputRow.querySelector('.disc-type-sel').value = item.itemDiscount.type;
-    inputRow.querySelector('.disc-val-input').value = item.itemDiscount.value;
+  function renderInputRow(selectedPct, customMode, customVal) {
+    const discAmt = customMode
+      ? (customVal || 0)
+      : Math.round(basePrice * (selectedPct || 0) / 100);
+    const preview = discAmt > 0 ? `-${formatKRW(discAmt)}` : '';
+
+    inputRow.innerHTML = `
+      <div style="display:flex;align-items:center;gap:4px;flex-wrap:nowrap;">
+        ${presets.map(p => `
+          <button class="disc-preset-btn" data-pct="${p}" style="padding:4px 10px;border-radius:20px;border:1px solid ${(!customMode && selectedPct===p)?'#dc2626':'#fecaca'};background:${(!customMode && selectedPct===p)?'#dc2626':'#fff'};color:${(!customMode && selectedPct===p)?'#fff':'#dc2626'};font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;">${p}%</button>
+        `).join('')}
+        <button class="disc-custom-btn" style="padding:4px 10px;border-radius:20px;border:1px solid ${customMode?'#dc2626':'#fecaca'};background:${customMode?'#dc2626':'#fff'};color:${customMode?'#fff':'#dc2626'};font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;">직접입력</button>
+        ${customMode ? `<input class="disc-custom-input" type="number" min="0" placeholder="할인금액" value="${customVal||''}" style="width:100px;border:1px solid #fecaca;border-radius:8px;padding:4px 8px;font-size:13px;font-weight:800;background:#fff;" />` : ''}
+        <span class="disc-preview" style="font-size:13px;font-weight:900;color:#dc2626;min-width:60px;text-align:right;">${preview}</span>
+        <button class="disc-confirm-btn" style="padding:4px 12px;border-radius:8px;background:#dc2626;color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;">확인</button>
+        <button class="disc-cancel-btn" style="padding:4px 10px;border-radius:8px;background:transparent;border:1px solid #fecaca;color:#dc2626;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;">취소</button>
+      </div>
+    `;
+
+    // 프리셋 버튼
+    inputRow.querySelectorAll('.disc-preset-btn').forEach(btn => {
+      btn.addEventListener('click', () => renderInputRow(Number(btn.dataset.pct), false, 0));
+    });
+
+    // 직접입력 버튼
+    inputRow.querySelector('.disc-custom-btn').addEventListener('click', () => {
+      renderInputRow(null, true, 0);
+      inputRow.querySelector('.disc-custom-input')?.focus();
+    });
+
+    // 직접입력 금액 실시간 미리보기
+    inputRow.querySelector('.disc-custom-input')?.addEventListener('input', e => {
+      const val = Number(e.target.value) || 0;
+      inputRow.querySelector('.disc-preview').textContent = val > 0 ? `-${formatKRW(val)}` : '';
+    });
+
+    // 확인
+    inputRow.querySelector('.disc-confirm-btn').addEventListener('click', () => {
+      if (customMode) {
+        const val = Number(inputRow.querySelector('.disc-custom-input')?.value) || 0;
+        item.itemDiscount = val > 0 ? { type: 'fixed', value: val } : null;
+      } else if (selectedPct) {
+        item.itemDiscount = { type: 'percent', value: selectedPct };
+      } else {
+        item.itemDiscount = null;
+      }
+      renderCostAll();
+    });
+
+    // 취소
+    inputRow.querySelector('.disc-cancel-btn').addEventListener('click', () => inputRow.remove());
   }
 
-  // 기존 할인 행 뒤에 삽입, 없으면 row 바로 뒤에 삽입
+  // 기존 할인값 반영
+  const d = item.itemDiscount;
+  if (d && d.type === 'fixed') renderInputRow(null, true, d.value);
+  else if (d && d.type === 'percent') renderInputRow(d.value, false, 0);
+  else renderInputRow(null, false, 0);
+
   const existingDiscRow = area.querySelector(`.disc-result-row-${item.id}`);
-  if (existingDiscRow) {
-    existingDiscRow.after(inputRow);
-  } else {
-    row.after(inputRow);
-  }
-  inputRow.querySelector('.disc-val-input').focus();
-
-  inputRow.querySelector('.disc-confirm-btn').addEventListener('click', () => {
-    const type = inputRow.querySelector('.disc-type-sel').value;
-    const value = Number(inputRow.querySelector('.disc-val-input').value) || 0;
-    if (value > 0) {
-      item.itemDiscount = { type, value };
-    } else {
-      item.itemDiscount = null;
-    }
-    renderCostAll();
-  });
-
-  inputRow.querySelector('.disc-cancel-btn').addEventListener('click', () => {
-    inputRow.remove();
-  });
+  existingDiscRow ? existingDiscRow.after(inputRow) : row.after(inputRow);
 }
 
 function createDiscountRow(item) {
