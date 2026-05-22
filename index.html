@@ -538,7 +538,7 @@
     .cost-item-discount-row { display: flex; align-items: center; gap: 8px; padding: 6px 14px 6px 24px; border-radius: 10px; background: #fff5f5; border: 1px solid #fecaca; }
     .cost-item-discount-label { font-size: 12px; color: #dc2626; font-weight: 800; flex: 1; }
     .cost-item-discount-amount { font-size: 13px; font-weight: 900; color: #dc2626; min-width: 80px; text-align: right; }
-    .cost-item-disc-input-row { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: #fff5f5; border: 1px solid #fecaca; border-radius: 10px; flex-wrap: wrap; }
+    .cost-item-disc-input-row { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: #fff5f5; border: 1px solid #fecaca; border-radius: 10px; }
 
     /* 견적 탭 + 버튼 */
     .quote-tabs { display: flex; border-bottom: 0.5px solid var(--line); background: var(--panel); flex-shrink: 0; }
@@ -4098,14 +4098,13 @@ function showItemDiscountInput(item, row, area) {
   const inputRow = document.createElement('div');
   inputRow.className = `cost-item-disc-input-row disc-input-row-${item.id}`;
   inputRow.innerHTML = `
-    <span style="font-size:12px;font-weight:800;color:#dc2626;flex-shrink:0;">할인</span>
-    <select class="disc-type-sel" style="border:1px solid #fecaca;border-radius:7px;padding:3px 6px;font-size:12px;font-weight:800;background:#fff;">
-      <option value="percent">%</option>
-      <option value="fixed">금액</option>
+    <select class="disc-type-sel" style="border:1px solid #fecaca;border-radius:7px;padding:4px 8px;font-size:12px;font-weight:800;background:#fff;flex-shrink:0;">
+      <option value="percent">% 할인</option>
+      <option value="fixed">금액 할인</option>
     </select>
-    <input class="disc-val-input" type="number" min="0" placeholder="0" style="width:80px;border:1px solid #fecaca;border-radius:7px;padding:4px 8px;font-size:13px;font-weight:800;" />
-    <button class="disc-confirm-btn" style="padding:4px 12px;border-radius:7px;background:#dc2626;color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;">확인</button>
-    <button class="disc-cancel-btn" style="padding:4px 10px;border-radius:7px;background:transparent;border:1px solid #fecaca;color:#dc2626;font-size:12px;font-weight:800;cursor:pointer;">취소</button>
+    <input class="disc-val-input" type="number" min="0" placeholder="0" style="flex:1;min-width:60px;border:1px solid #fecaca;border-radius:7px;padding:4px 8px;font-size:13px;font-weight:800;" />
+    <button class="disc-confirm-btn" style="padding:4px 12px;border-radius:7px;background:#dc2626;color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;flex-shrink:0;">확인</button>
+    <button class="disc-cancel-btn" style="padding:4px 10px;border-radius:7px;background:transparent;border:1px solid #fecaca;color:#dc2626;font-size:12px;font-weight:800;cursor:pointer;flex-shrink:0;">취소</button>
   `;
 
   // 기존 할인값 미리 채우기
