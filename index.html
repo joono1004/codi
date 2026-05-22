@@ -4036,25 +4036,27 @@ function renderCostItems() {
     }
 
     const priceEl = row.querySelector('.cost-item-price');
-    function startEdit() {
-      const input = document.createElement('input');
-      input.type = 'number'; input.className = 'cost-item-price-edit';
-      input.value = item.unitPrice; input.min = 0;
-      priceEl.replaceWith(input); input.focus(); input.select();
-      let committed = false;
-      function commit() {
-        if (committed) return; committed = true;
-        item.unitPrice = Math.max(0, Number(input.value) || 0);
-        renderCostAll();
+    if (priceEl) {
+      function startEdit() {
+        const input = document.createElement('input');
+        input.type = 'number'; input.className = 'cost-item-price-edit';
+        input.value = item.unitPrice; input.min = 0;
+        priceEl.replaceWith(input); input.focus(); input.select();
+        let committed = false;
+        function commit() {
+          if (committed) return; committed = true;
+          item.unitPrice = Math.max(0, Number(input.value) || 0);
+          renderCostAll();
+        }
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', e => {
+          if (e.key === 'Enter') input.blur();
+          if (e.key === 'Escape') { committed = true; renderCostAll(); }
+        });
       }
-      input.addEventListener('blur', commit);
-      input.addEventListener('keydown', e => {
-        if (e.key === 'Enter') input.blur();
-        if (e.key === 'Escape') { committed = true; renderCostAll(); }
-      });
+      priceEl.addEventListener('click', startEdit);
+      priceEl.addEventListener('touchend', e => { e.preventDefault(); startEdit(); });
     }
-    priceEl.addEventListener('click', startEdit);
-    priceEl.addEventListener('touchend', e => { e.preventDefault(); startEdit(); });
 
     // 드래그 순서변경
     row.draggable = true;
