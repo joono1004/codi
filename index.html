@@ -563,6 +563,27 @@
     .compare-discount-btn { padding: 6px 14px; border-radius: 20px; border: 1px solid var(--line); background: var(--bg); font-size: 12px; font-weight: 800; cursor: pointer; transition: .15s; color: var(--sub); }
     .compare-discount-btn.active-a { background: var(--primary); color: #fff; border-color: var(--primary); }
     .compare-discount-btn.active-b { background: #3B6D11; color: #fff; border-color: #3B6D11; }
+
+    /* ── PC 2컬럼 레이아웃 ── */
+    .cost-pc-left, .cost-pc-right { display: contents; }
+    @media (min-width: 769px) {
+      .cost-screen-body { flex-direction: row; }
+      .cost-pc-left { width: 320px; flex-shrink: 0; border-right: 1px solid var(--line); display: flex; flex-direction: column; overflow: hidden; }
+      .cost-pc-right { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+    }
+
+    /* ── 즐겨찾기 영역 ── */
+    .cost-fav-area { flex-direction: column; flex-shrink: 0; border-bottom: 1px solid var(--line); padding: 10px 14px; background: #fffbeb; }
+    .cost-fav-label { font-size: 10px; font-weight: 800; color: #92400e; margin-bottom: 8px; }
+    .cost-fav-items { display: flex; flex-wrap: wrap; gap: 6px; }
+    .qi-fav { position: absolute; top: 4px; right: 4px; font-size: 10px; background: none; border: none; cursor: pointer; opacity: 0.4; padding: 0; line-height: 1; }
+    .qi-fav.active { opacity: 1; }
+    .cost-quick-item { position: relative; }
+
+    /* ── 드래그 순서변경 ── */
+    .cost-item-row { cursor: grab; }
+    .cost-item-row.dragging { opacity: 0.4; }
+    .cost-item-row.drag-over { border-color: var(--primary); background: var(--primary-soft); }
     /* ── 환자정보 뷰 (읽기 전용) ── */
     .pt-info-name { font-size: 20px; font-weight: 900; color: var(--text); }
     .pt-info-chart { font-size: 13px; color: var(--sub); margin-left: 8px; font-weight: 700; }
@@ -1068,34 +1089,48 @@
   <div class="screen" id="screen-cost">
     <div class="cost-screen-body">
 
-      <!-- 상단: 빠른 항목 선택 -->
-      <div class="cost-quick-area">
-        <div class="cost-quick-cats" id="costQuickCats"></div>
-        <div class="cost-quick-items" id="costQuickItems">
-          <span style="font-size:12px;color:var(--sub);padding:10px 0;">단가표를 설정하면 여기에 표시됩니다</span>
+      <!-- PC 왼쪽 컬럼: 즐겨찾기 + 빠른 항목 선택 -->
+      <div class="cost-pc-left">
+
+        <!-- 즐겨찾기 영역 -->
+        <div class="cost-fav-area" id="costFavArea" style="display:none;">
+          <div class="cost-fav-label">⭐ 즐겨찾기</div>
+          <div class="cost-fav-items" id="costFavItems"></div>
         </div>
-      </div>
 
-      <!-- 견적 탭 (JS에서 동적 렌더) -->
-      <div class="quote-tabs" id="quoteTabs"></div>
-
-      <!-- 단일모드: 견적 목록 -->
-      <div class="cost-items-area" id="costItemsArea">
-        <div class="cost-empty" id="costEmptyMsg">항목을 선택하거나 ＋로 직접 추가하세요</div>
-      </div>
-
-      <!-- 비교모드: 2컬럼 (기본 숨김) -->
-      <div class="compare-cols" id="compareCols" style="display:none;">
-        <div class="compare-col-items" id="compareColA">
-          <div class="compare-col-label">견적 A</div>
+        <!-- 상단: 빠른 항목 선택 -->
+        <div class="cost-quick-area">
+          <div class="cost-quick-cats" id="costQuickCats"></div>
+          <div class="cost-quick-items" id="costQuickItems">
+            <span style="font-size:12px;color:var(--sub);padding:10px 0;">단가표를 설정하면 여기에 표시됩니다</span>
+          </div>
         </div>
-        <div class="compare-col-items" id="compareColB">
-          <div class="compare-col-label">견적 B</div>
-        </div>
-      </div>
 
-      <!-- 하단: 금액 요약 (단일모드) -->
-      <div class="cost-summary-area" id="costSummaryArea">
+      </div><!-- /cost-pc-left -->
+
+      <!-- PC 오른쪽 컬럼: 견적 목록 + 요약 -->
+      <div class="cost-pc-right">
+
+        <!-- 견적 탭 (JS에서 동적 렌더) -->
+        <div class="quote-tabs" id="quoteTabs"></div>
+
+        <!-- 단일모드: 견적 목록 -->
+        <div class="cost-items-area" id="costItemsArea">
+          <div class="cost-empty" id="costEmptyMsg">항목을 선택하거나 ＋로 직접 추가하세요</div>
+        </div>
+
+        <!-- 비교모드: 2컬럼 (기본 숨김) -->
+        <div class="compare-cols" id="compareCols" style="display:none;">
+          <div class="compare-col-items" id="compareColA">
+            <div class="compare-col-label">견적 A</div>
+          </div>
+          <div class="compare-col-items" id="compareColB">
+            <div class="compare-col-label">견적 B</div>
+          </div>
+        </div>
+
+        <!-- 하단: 금액 요약 (단일모드) -->
+        <div class="cost-summary-area" id="costSummaryArea">
         <div class="cost-subtotal-row">
           <span class="cost-subtotal-label">소계</span>
           <span class="cost-subtotal-val" id="costSubtotal">0원</span>
@@ -1164,6 +1199,8 @@
         </div>
 
       </div>
+
+      </div><!-- /cost-pc-right -->
     </div>
   </div>
 
@@ -3989,6 +4026,34 @@ function renderCostItems() {
     priceEl.addEventListener('click', startEdit);
     priceEl.addEventListener('touchend', e => { e.preventDefault(); startEdit(); });
 
+    // 드래그 순서변경
+    row.draggable = true;
+    row.dataset.itemId = item.id;
+    row.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', item.id);
+      row.classList.add('dragging');
+    });
+    row.addEventListener('dragend', () => row.classList.remove('dragging'));
+    row.addEventListener('dragover', e => {
+      e.preventDefault();
+      row.classList.add('drag-over');
+    });
+    row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      row.classList.remove('drag-over');
+      const fromId = Number(e.dataTransfer.getData('text/plain'));
+      const toId = item.id;
+      if (fromId === toId) return;
+      const q = getActiveQuote();
+      const fromIdx = q.items.findIndex(i => i.id === fromId);
+      const toIdx = q.items.findIndex(i => i.id === toId);
+      if (fromIdx === -1 || toIdx === -1) return;
+      const [moved] = q.items.splice(fromIdx, 1);
+      q.items.splice(toIdx, 0, moved);
+      renderCostAll();
+    });
+
     area.appendChild(row);
   });
 
@@ -4211,6 +4276,7 @@ function renderCostScreen() {
   resetQuotes();
   renderQuoteTabs();
   renderCostAll();
+  renderFavArea();
 }
 
 /* ── 인라인 항목 추가 ── */
@@ -4251,6 +4317,39 @@ function addInlineItem(qi) {
 }
 
 
+/* ── 즐겨찾기 ── */
+function getFavs() { return JSON.parse(localStorage.getItem('codi_fav_items') || '[]'); }
+function saveFavs(favs) { localStorage.setItem('codi_fav_items', JSON.stringify(favs)); }
+function toggleFav(presetId) {
+  let favs = getFavs();
+  favs.includes(presetId) ? favs = favs.filter(f => f !== presetId) : favs.push(presetId);
+  saveFavs(favs);
+  renderFavArea();
+  // ⭐ 버튼 상태 즉시 갱신
+  document.querySelectorAll(`.qi-fav[data-fav-id="${presetId}"]`).forEach(btn => {
+    btn.classList.toggle('active', getFavs().includes(presetId));
+  });
+}
+function renderFavArea() {
+  const favs = getFavs();
+  const area = document.getElementById('costFavArea');
+  const el = document.getElementById('costFavItems');
+  if (!area || !el) return;
+  const items = AppState.pricePresets.filter(p => favs.includes(p.id));
+  area.style.display = items.length ? 'flex' : 'none';
+  el.innerHTML = items.map(p => `
+    <button class="cost-quick-item" data-id="${p.id}" data-name="${p.name}" data-price="${p.price}" data-unit="${p.unit}">
+      <span class="qi-name">${p.name}</span>
+      <span class="qi-price">${formatKRW(p.price)}</span>
+    </button>
+  `).join('');
+  el.querySelectorAll('.cost-quick-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      addCostItem({ presetId: btn.dataset.id, name: btn.dataset.name, unitPrice: Number(btn.dataset.price), unit: btn.dataset.unit, qty: 1 });
+    });
+  });
+}
+
 /* ── 빠른 항목 버튼 렌더 ── */
 function renderCostQuickItems(cat) {
   const items = AppState.pricePresets.filter(p => p.category === cat);
@@ -4263,16 +4362,27 @@ function renderCostQuickItems(cat) {
 
   // 비교모드일 때 어느 견적에 추가되는지 안내
   const targetLabel = isCompareMode() ? `<div style="font-size:10px;color:var(--sub);width:100%;margin-bottom:4px;">▶ <b>${quotes[activeQuoteIdx]?.label}</b>에 추가됩니다</div>` : '';
+  const favs = getFavs();
 
-  el.innerHTML = targetLabel + items.map(p => `
+  el.innerHTML = targetLabel + items.map(p => {
+    const isFav = favs.includes(p.id);
+    return `
     <button class="cost-quick-item" data-id="${p.id}" data-name="${p.name}" data-price="${p.price}" data-unit="${p.unit}">
       <span class="qi-name">${p.name}</span>
       <span class="qi-price">${formatKRW(p.price)}</span>
-    </button>
-  `).join('');
+      <button class="qi-fav${isFav ? ' active' : ''}" data-fav-id="${p.id}" title="즐겨찾기">⭐</button>
+    </button>`;
+  }).join('');
+
   el.querySelectorAll('.cost-quick-item').forEach(btn => {
     btn.addEventListener('click', () => {
       addCostItem({ presetId: btn.dataset.id, name: btn.dataset.name, unitPrice: Number(btn.dataset.price), unit: btn.dataset.unit, qty: 1 });
+    });
+  });
+  el.querySelectorAll('.qi-fav').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      toggleFav(btn.dataset.favId);
     });
   });
 }
