@@ -2369,8 +2369,8 @@ function drawTemplateOnCanvas(tmplData) {
   bg.ctx.fillStyle = '#fff';
   bg.ctx.fillRect(0, 0, bg.canvas.width, bg.canvas.height);
 
-  // 드로잉 레이어 초기화
-  r.ctx.clearRect(0, 0, r.canvas.width, r.canvas.height);
+  // 드로잉 레이어 + 스트로크 상태 초기화
+  clearCanvas();
 
   if (!tmplData || tmplData.type === 'blank') {
     currentBgUrl = null;
@@ -2417,7 +2417,7 @@ function drawImageTemplateOnCanvas(url) {
 
   bg.ctx.fillStyle = '#fff';
   bg.ctx.fillRect(0, 0, bg.canvas.width, bg.canvas.height);
-  r.ctx.clearRect(0, 0, r.canvas.width, r.canvas.height);
+  clearCanvas();
 
   const img = new Image();
   img.crossOrigin = 'anonymous';
@@ -5461,9 +5461,7 @@ async function saveConsultation() {
   if(!patient){alert('상담할 환자를 먼저 선택해주세요.');return;}
 
   const activeQuote = getActiveQuote();
-  const subtotal = activeQuote.items.reduce((s,i)=>s+i.unitPrice*i.qty,0);
-  const discountAmt = Math.round(subtotal * activeQuote.discountRate / 100);
-  const total = Math.max(0, subtotal - discountAmt);
+  const { subtotal, discountAmt, total } = calcQuote(activeQuote);
 
   const payload={
     user_id: AppState.currentUser.id,
@@ -5491,11 +5489,11 @@ async function saveConsultation() {
         item_name: item.name,
         unit_price: item.unitPrice,
         quantity: item.qty,
-        discount: 0,
+        discount: calcItemDiscount(item),
         display_order: idx,
       }));
-      // 전체 할인은 마지막 항목에 적용
-      if(itemPayloads.length > 0) itemPayloads[itemPayloads.length-1].discount = discount;
+      // 전체 할인은 마지막 항목에 합산
+      if(itemPayloads.length > 0) itemPayloads[itemPayloads.length-1].discount += discountAmt;
       await AppState.supabase.from('consultation_items').insert(itemPayloads);
     }
 
@@ -5663,7 +5661,7 @@ async function loadConsultations() {
     _consultCards = {};
 
     list.innerHTML = data.map((item, idx) => {
-      const date = new Date(item.created_at).toLocaleDateString('ko-KR', { year:'2-digit', month:'2-digit', day:'2-digit' }).replace(/\. /g,'.').replace('.','');
+      const date = new Date(item.created_at).toLocaleDateString('ko-KR', { year:'2-digit', month:'2-digit', day:'2-digit' }).replace(/\. /g,'.').replace(/\.$/,'');
 
       // 카드 데이터 저장
       const rawStt = item.stt_text || item.stt_raw || null;
