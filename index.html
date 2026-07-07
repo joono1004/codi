@@ -1681,10 +1681,12 @@ function getSelectedPatient() { return AppState.patients.find(p=>p.id===AppState
 async function loadTodayConsultCount() {
   if (!AppState.connected) return;
   try {
-    const today = new Date().toISOString().split('T')[0];
+    // 로컬(KST) 자정 기준으로 오늘 범위 계산 → UTC로 변환해 조회
+    const start = new Date(); start.setHours(0,0,0,0);
+    const end = new Date(start); end.setDate(end.getDate()+1);
     const { data, error } = await AppState.supabase
       .from('consultations').select('patient_id')
-      .gte('created_at', today+'T00:00:00').lte('created_at', today+'T23:59:59');
+      .gte('created_at', start.toISOString()).lt('created_at', end.toISOString());
     if (error) throw error;
     const unique = new Set((data||[]).map(r=>r.patient_id));
     AppState.todayConsultCount = unique.size;
@@ -1893,20 +1895,6 @@ function closePatientPopup() {
   updateCanvasPatientName();
 }
 
-/* ── 성별 선택 ── */
-function setGender(val) {
-  AppState.gender = val;
-  const maleBtn  = document.getElementById('genderMaleBtn');
-  const femaleBtn = document.getElementById('genderFemaleBtn');
-  if (maleBtn && femaleBtn) {
-    const activeStyle = 'padding:10px 12px;border-radius:14px;border:1px solid var(--primary);background:var(--primary-soft);font-weight:800;font-size:14px;cursor:pointer;color:var(--primary);';
-    const normalStyle = 'padding:10px 12px;border-radius:14px;border:1px solid var(--line);background:#fff;font-weight:800;font-size:14px;cursor:pointer;';
-    maleBtn.style.cssText  = val === '남' ? activeStyle : normalStyle;
-    femaleBtn.style.cssText = val === '여' ? activeStyle : normalStyle;
-  }
-  checkPatientFormDirty();
-}
-
 /* ── 생년월일 드럼롤 ── */
 function updateBirthConfirmBtn() {
   const btn = document.getElementById('birthConfirmBtn');
@@ -1940,7 +1928,8 @@ function buildDrumRoll() {
       const idx = items.indexOf(selected);
       if(idx>=0) setTimeout(()=>{ el.scrollTop = idx*40; }, 50);
     }
-    el.addEventListener('click', e=>{
+    // onclick 할당으로 모달 재오픈 시 리스너 중복 방지
+    el.onclick = e=>{
       const item = e.target.closest('.drum-item');
       if(!item) return;
       el.querySelectorAll('.drum-item').forEach(i=>i.classList.remove('selected'));
@@ -1950,7 +1939,7 @@ function buildDrumRoll() {
       if(unit==='월') AppState.birthMonth = val;
       if(unit==='일') AppState.birthDay = val;
       updateBirthConfirmBtn();
-    });
+    };
   }
   fill(document.getElementById('drumYear'), years, selY, '년');
   fill(document.getElementById('drumMonth'), months, selM, '월');
@@ -3038,6 +3027,7 @@ const RecordState = {
   mediaRecorder: null,
   chunks: [],
   startTime: null,
+  mimeType: null,
 };
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -3190,12 +3180,23 @@ function setViewerMode(on) {
   }
 }
 
+function pickRecorderMime() {
+  // Safari는 audio/webm 미지원 → 지원되는 타입 순서대로 선택
+  const candidates = ['audio/webm', 'audio/mp4', 'audio/ogg'];
+  if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return '';
+  return candidates.find(t => MediaRecorder.isTypeSupported(t)) || '';
+}
+
 async function startMediaRecorder() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     RecordState.chunks = [];
     RecordState.startTime = new Date();
-    RecordState.mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+    const mime = pickRecorderMime();
+    RecordState.mimeType = mime || 'audio/webm';
+    RecordState.mediaRecorder = mime
+      ? new MediaRecorder(stream, { mimeType: mime })
+      : new MediaRecorder(stream); // 브라우저 기본 타입으로 폴백
     RecordState.mediaRecorder.ondataavailable = e => { if (e.data.size > 0) RecordState.chunks.push(e.data); };
     RecordState.mediaRecorder.start(1000);
   } catch(e) {
@@ -3207,9 +3208,11 @@ function stopMediaRecorderAndDownload(patientName) {
   return new Promise(resolve => {
     if (!RecordState.mediaRecorder || RecordState.mediaRecorder.state === 'inactive') { resolve(null); return; }
     RecordState.mediaRecorder.onstop = () => {
-      const blob = new Blob(RecordState.chunks, { type: 'audio/webm' });
+      const mime = RecordState.mimeType || 'audio/webm';
+      const ext = mime.includes('mp4') ? 'm4a' : mime.includes('ogg') ? 'ogg' : 'webm';
+      const blob = new Blob(RecordState.chunks, { type: mime });
       const date = (RecordState.startTime || new Date()).toLocaleDateString('ko-KR').replace(/\. /g,'-').replace('.','');
-      const name = `${patientName||'미지정'}_${date}_상담.webm`;
+      const name = `${patientName||'미지정'}_${date}_상담.${ext}`;
       // 자동 다운로드
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -3804,22 +3807,32 @@ window.addEventListener('resize', () => {
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    화면 전환 (3탭)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+function updateTreatMobileState() {
+  const isMobile = window.innerWidth <= 768;
+  const msg = document.getElementById('treat-mobile-msg');
+  const content = document.getElementById('treat-canvas-content');
+  if (!msg || !content) return;
+  msg.style.display = isMobile ? 'flex' : 'none';
+  content.style.display = isMobile ? 'none' : 'flex';
+}
+
 function switchScreen(name) {
   document.querySelectorAll('.nav-tab').forEach(t =>
     t.classList.toggle('active', t.dataset.screen === name));
   document.querySelectorAll('.screen').forEach(s =>
     s.classList.toggle('active', s.id === `screen-${name}`));
-  if (name === 'treat') {
-    const isMobile = window.innerWidth <= 768;
-    document.getElementById('treat-mobile-msg').style.display = isMobile ? 'flex' : 'none';
-    document.getElementById('treat-canvas-content').style.display = isMobile ? 'none' : 'flex';
-  }
+  if (name === 'treat') updateTreatMobileState();
   if (name === 'patient') loadConsultations();
   if (name === 'consult') {
     AppState.currentTab = 'consult';
     syncCatBars();
   }
 }
+
+// 화면 회전/리사이즈 시 캔버스 표시 상태 갱신
+window.addEventListener('resize', () => {
+  if (document.getElementById('screen-treat')?.classList.contains('active')) updateTreatMobileState();
+});
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    상담 세션 (치료상담 ↔ 비용상담 공유)
@@ -4190,25 +4203,6 @@ function showItemDiscountInput(item, row, area) {
   else renderInputRow(null, false, 0);
 
   row.after(inputRow);
-}
-
-function createDiscountRow(item) {
-  const discAmt = calcItemDiscount(item);
-  const label = item.itemDiscount.type === 'percent'
-    ? `↳ 할인 ${item.itemDiscount.value}%`
-    : `↳ 할인 (직접입력)`;
-  const div = document.createElement('div');
-  div.className = `cost-item-discount-row disc-result-row-${item.id}`;
-  div.innerHTML = `
-    <span class="cost-item-discount-label">${label}</span>
-    <span class="cost-item-discount-amount">-${formatKRW(discAmt)}</span>
-    <button class="cost-item-del" style="color:#fca5a5;" title="할인 제거">✕</button>
-  `;
-  div.querySelector('.cost-item-del').addEventListener('click', () => {
-    item.itemDiscount = null;
-    renderCostAll();
-  });
-  return div;
 }
 
 function renderCostSummary() {
@@ -5934,11 +5928,8 @@ function bindEvents() {
   document.querySelectorAll('.nav-tab').forEach(btn =>
     btn.addEventListener('click', () => switchScreen(btn.dataset.screen)));
 
-  // 초기 로드 시 모바일이면 캔버스 숨김
-  if (window.innerWidth <= 768) {
-    document.getElementById('treat-mobile-msg').style.display = 'flex';
-    document.getElementById('treat-canvas-content').style.display = 'none';
-  }
+  // 초기 로드 시 캔버스 표시 상태 반영
+  updateTreatMobileState();
 
   // ── 의료진 패널 (레거시 - 비활성) ──
 
