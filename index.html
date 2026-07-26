@@ -671,7 +671,7 @@
     .mob-prev-scroll::-webkit-scrollbar { display: none; }
     .mob-prev-scroll .prev-thumb { width: 72px; flex-shrink: 0; margin-bottom: 0; }
 
-    /* 태블릿 세로 / 좁은 화면 (834px 미만) */
+    /* 태블릿 세로 / 좁은 화면 (834px 미만) - JS의 TABLET_BREAKPOINT와 값 동기화 필요 */
     @media (max-width: 834px) {
       .app-nav { padding: 0 10px; gap: 6px; height: 48px; }
       .nav-brand-name { font-size: 13px; }
@@ -710,7 +710,7 @@
       .nav-pt-search { min-width: 90px; max-width: 120px; }
     }
 
-    /* 768px 미만 */
+    /* 768px 미만 - JS의 MOBILE_BREAKPOINT와 값 동기화 필요 */
     @media (max-width: 768px) {
       .nav-tabs { gap: 1px; }
       .nav-tab { padding: 5px 8px; font-size: 11px; }
@@ -1639,6 +1639,10 @@ const TAG_CATEGORIES = {
   '환자성향':   ['질문많음','치료공포있음','빠른결정선호','꼼꼼한성격','가격비교중']
 };
 
+// 반응형 breakpoint (CSS의 @media (max-width: 768px / 834px)와 동기화 필요)
+const MOBILE_BREAKPOINT = 768;
+const TABLET_BREAKPOINT = 834;
+
 const AppState = {
   supabase: null, connected: false, patients: [], selectedPatientId: null,
   currentTab: 'consult', recognition: null, isRecording: false,
@@ -1819,12 +1823,6 @@ function renderSelectedPatient() {
   if (memoInput) memoInput.value = p.memo || '';
 
   updateCanvasPatientName();
-}
-
-function setTab(t) {
-  AppState.currentTab = t;
-  document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
-  document.querySelectorAll('.tab-section').forEach(s=>s.classList.toggle('active',s.id===`tab-${t}`));
 }
 
 /* ── 토스트 알림 ── */
@@ -2329,8 +2327,6 @@ function initCanvas() {
   renderCanvasTmplList();
 }
 
-function saveCanvasHistory() {} // 하위 호환용 (빈 함수)
-
 function undoCanvas() {
   if (CanvasState.strokes.length === 0) return;
   CanvasState.strokes.pop();
@@ -2363,7 +2359,7 @@ function drawTemplateOnCanvas(tmplData) {
 
   if (!tmplData || tmplData.type === 'blank') {
     currentBgUrl = null;
-    saveCanvasHistory(r.canvas); return;
+    return;
   }
 
   const cx = bg.canvas.width / 2, cy = bg.canvas.height / 2;
@@ -2394,7 +2390,6 @@ function drawTemplateOnCanvas(tmplData) {
     }
   }
   bg.ctx.restore();
-  saveCanvasHistory(r.canvas);
 }
 
 function drawImageTemplateOnCanvas(url) {
@@ -2415,9 +2410,7 @@ function drawImageTemplateOnCanvas(url) {
     bg.ctx.globalAlpha = bgOpacity;
     bg.ctx.drawImage(img, 0, 0, bg.canvas.width, bg.canvas.height);
     bg.ctx.restore();
-    saveCanvasHistory(r.canvas);
   };
-  img.onerror = () => saveCanvasHistory(r.canvas);
   img.src = url;
 }
 
@@ -3004,25 +2997,6 @@ async function saveStrokesToDB(consultId) {
     .eq('id', consultId);
 }
 
-/* ── strokes JSON DB에서 불러와 복원 ── */
-async function loadStrokesFromDB(consultId) {
-  if (!AppState.connected || !consultId) return;
-  const { data } = await AppState.supabase.from('consultations')
-    .select('drawing_data, canvas_image_url')
-    .eq('id', consultId).single();
-  if (!data?.drawing_data) return;
-  try {
-    const saved = JSON.parse(data.drawing_data);
-    CanvasState.strokes = saved.strokes || [];
-    // 배경 이미지 복원
-    if (saved.templateUrl) {
-      currentBgUrl = saved.templateUrl;
-      applyBgOpacity(bgOpacity);
-    }
-    rebuildBakedCanvas();
-    renderCanvas();
-  } catch(e) { console.warn('드로잉 데이터 복원 실패:', e); }
-}
 const RecordState = {
   mediaRecorder: null,
   chunks: [],
@@ -3278,6 +3252,9 @@ async function saveConsultOnEnd() {
   const consultId = AppState.currentConsultId;
   AppState.currentConsultId = null;
 
+  const activeQuote = getActiveQuote();
+  const { discountAmt, total } = calcQuote(activeQuote);
+
   try {
     const payload = {
       user_id: AppState.currentUser.id,
@@ -3287,23 +3264,53 @@ async function saveConsultOnEnd() {
       stt_text: AppState.sttRaw || null,
       stt_summary: summary || null,
       canvas_image_url: canvasUrl,
-      estimated_total: 0,
+      estimated_total: total,
       next_action: '재상담 예정',
       consult_date: new Date().toISOString().slice(0,10),
     };
+
+    let savedId = consultId;
     if (consultId) {
       const { error } = await AppState.supabase.from('consultations').update(payload).eq('id', consultId);
       if (error) throw error;
     } else {
-      const { error } = await AppState.supabase.from('consultations').insert(payload);
+      const { data, error } = await AppState.supabase.from('consultations').insert(payload).select().single();
       if (error) throw error;
+      savedId = data?.id;
     }
+
+    // 견적 항목 저장 (기존 항목 삭제 후 재삽입 - 수정 저장 시 중복 방지)
+    if (savedId) {
+      await AppState.supabase.from('consultation_items').delete().eq('consultation_id', savedId);
+      if (activeQuote.items.length) {
+        const itemPayloads = activeQuote.items.map((item, idx) => ({
+          consultation_id: savedId,
+          user_id: AppState.currentUser.id,
+          preset_id: item.presetId || null,
+          item_name: item.name,
+          unit_price: item.unitPrice,
+          quantity: item.qty,
+          discount: calcItemDiscount(item),
+          display_order: idx,
+        }));
+        // 전체 할인은 마지막 항목에 합산
+        itemPayloads[itemPayloads.length-1].discount += discountAmt;
+        await AppState.supabase.from('consultation_items').insert(itemPayloads);
+      }
+    }
+
+    if (patient) {
+      await AppState.supabase.from('patients').update({ last_total: total }).eq('id', patient.id);
+    }
+
     showToast('상담 기록이 저장됐습니다.', 'success');
     loadPrevConsultThumbs();
     await loadTodayConsultCount();
     if (patient) await loadConsultations();
     clearCanvas();
     AppState.sttRaw = ''; AppState.sttRawFinal = ''; AppState.sttSummary = '';
+    quotes = [{ id: 'A', label: '견적 A', items: [], discountRate: 0 }];
+    activeQuoteIdx = 0;
   } catch(e) {
     showToast(`저장 실패: ${e.message}`, 'warn');
   }
@@ -3686,7 +3693,7 @@ function loadSavedTheme() {
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    태블릿 반응형 처리
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-function isTabletPortrait() { return window.innerWidth <= 834; }
+function isTabletPortrait() { return window.innerWidth <= TABLET_BREAKPOINT; }
 
 function syncCatBars() {
   const mobCatBtn      = document.getElementById('mobCatBtn');
@@ -3808,7 +3815,7 @@ window.addEventListener('resize', () => {
    화면 전환 (3탭)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 function updateTreatMobileState() {
-  const isMobile = window.innerWidth <= 768;
+  const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
   const msg = document.getElementById('treat-mobile-msg');
   const content = document.getElementById('treat-canvas-content');
   if (!msg || !content) return;
@@ -3911,26 +3918,6 @@ function bindCanvasTopbar() {
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    화면 전환 (구 코드 정리)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-
-/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   의료진 패널 열기/닫기
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-function openMgmtPanel() {
-  document.getElementById('mgmtPanel').classList.add('open');
-  document.getElementById('mgmtOverlay').classList.add('open');
-  loadConsultations();
-}
-function closeMgmtPanel() {
-  document.getElementById('mgmtPanel').classList.remove('open');
-  document.getElementById('mgmtOverlay').classList.remove('open');
-}
-
-function updateCatDropdownLabel() {
-  const label = document.getElementById('catDropdownLabel');
-  if (label) label.textContent = CanvasState.currentCat;
-  document.getElementById('catDropdownList')?.classList.add('hidden');
-  document.getElementById('catDropdownBtn')?.classList.remove('open');
-}
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    비용상담 새 렌더링
@@ -4343,30 +4330,21 @@ function addCostItem(item) {
   renderCostAll();
 }
 
-function removeCostItem(id) {
-  const q = getActiveQuote();
-  q.items = q.items.filter(i => i.id !== id);
-  renderCostAll();
-}
-
-function changeCostItemQty(id, delta) {
-  const item = getActiveQuote().items.find(i => i.id === id);
-  if (!item) return;
-  item.qty = Math.max(1, item.qty + delta);
-  renderCostAll();
-}
-
-function removeCostItemQ(qi, id) {
+// qi 생략 시 현재 활성 견적(단일모드), 지정 시 비교모드에서 해당 견적(A/B)에 적용
+function removeCostItem(id, qi = activeQuoteIdx) {
   quotes[qi].items = quotes[qi].items.filter(i => i.id !== id);
   renderCostAll();
 }
 
-function changeCostItemQtyQ(qi, id, delta) {
+function changeCostItemQty(id, delta, qi = activeQuoteIdx) {
   const item = quotes[qi].items.find(i => i.id === id);
   if (!item) return;
   item.qty = Math.max(1, item.qty + delta);
   renderCostAll();
 }
+
+function removeCostItemQ(qi, id) { removeCostItem(id, qi); }
+function changeCostItemQtyQ(qi, id, delta) { changeCostItemQty(id, delta, qi); }
 
 function setQuoteDiscount(qi, rate) {
   quotes[qi].discountRate = rate;
@@ -4471,6 +4449,34 @@ function toggleFav(presetId) {
     btn.classList.toggle('active', getFavs().includes(presetId));
   });
 }
+// 빠른 항목 버튼 1개 HTML (즐겨찾기 영역/카테고리 목록 공용)
+function quickItemBtnHtml(p, showFavStar) {
+  const favBtn = showFavStar
+    ? `<button class="qi-fav${getFavs().includes(p.id) ? ' active' : ''}" data-fav-id="${p.id}" title="즐겨찾기">⭐</button>`
+    : '';
+  return `
+    <button class="cost-quick-item" data-id="${p.id}" data-name="${p.name}" data-price="${p.price}" data-unit="${p.unit}">
+      <span class="qi-name">${p.name}</span>
+      <span class="qi-price">${formatKRW(p.price)}</span>
+      ${favBtn}
+    </button>`;
+}
+
+// 빠른 항목 버튼 컨테이너 공용 이벤트 바인딩 (추가 클릭 + 즐겨찾기 토글)
+function bindQuickItemEvents(el) {
+  el.querySelectorAll('.cost-quick-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      addCostItem({ presetId: btn.dataset.id, name: btn.dataset.name, unitPrice: Number(btn.dataset.price), unit: btn.dataset.unit, qty: 1 });
+    });
+  });
+  el.querySelectorAll('.qi-fav').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      toggleFav(btn.dataset.favId);
+    });
+  });
+}
+
 function renderFavArea() {
   const favs = getFavs();
   const area = document.getElementById('costFavArea');
@@ -4478,17 +4484,8 @@ function renderFavArea() {
   if (!area || !el) return;
   const items = AppState.pricePresets.filter(p => favs.includes(p.id));
   area.style.display = items.length ? 'flex' : 'none';
-  el.innerHTML = items.map(p => `
-    <button class="cost-quick-item" data-id="${p.id}" data-name="${p.name}" data-price="${p.price}" data-unit="${p.unit}">
-      <span class="qi-name">${p.name}</span>
-      <span class="qi-price">${formatKRW(p.price)}</span>
-    </button>
-  `).join('');
-  el.querySelectorAll('.cost-quick-item').forEach(btn => {
-    btn.addEventListener('click', () => {
-      addCostItem({ presetId: btn.dataset.id, name: btn.dataset.name, unitPrice: Number(btn.dataset.price), unit: btn.dataset.unit, qty: 1 });
-    });
-  });
+  el.innerHTML = items.map(p => quickItemBtnHtml(p, false)).join('');
+  bindQuickItemEvents(el);
 }
 
 /* ── 빠른 항목 버튼 렌더 ── */
@@ -4503,29 +4500,9 @@ function renderCostQuickItems(cat) {
 
   // 비교모드일 때 어느 견적에 추가되는지 안내
   const targetLabel = isCompareMode() ? `<div style="font-size:10px;color:var(--sub);width:100%;margin-bottom:4px;">▶ <b>${quotes[activeQuoteIdx]?.label}</b>에 추가됩니다</div>` : '';
-  const favs = getFavs();
 
-  el.innerHTML = targetLabel + items.map(p => {
-    const isFav = favs.includes(p.id);
-    return `
-    <button class="cost-quick-item" data-id="${p.id}" data-name="${p.name}" data-price="${p.price}" data-unit="${p.unit}">
-      <span class="qi-name">${p.name}</span>
-      <span class="qi-price">${formatKRW(p.price)}</span>
-      <button class="qi-fav${isFav ? ' active' : ''}" data-fav-id="${p.id}" title="즐겨찾기">⭐</button>
-    </button>`;
-  }).join('');
-
-  el.querySelectorAll('.cost-quick-item').forEach(btn => {
-    btn.addEventListener('click', () => {
-      addCostItem({ presetId: btn.dataset.id, name: btn.dataset.name, unitPrice: Number(btn.dataset.price), unit: btn.dataset.unit, qty: 1 });
-    });
-  });
-  el.querySelectorAll('.qi-fav').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.stopPropagation();
-      toggleFav(btn.dataset.favId);
-    });
-  });
+  el.innerHTML = targetLabel + items.map(p => quickItemBtnHtml(p, true)).join('');
+  bindQuickItemEvents(el);
 }
 
 /* ── 견적 탭 렌더 ── */
@@ -5445,63 +5422,6 @@ function resetConsultationForm() {
   renderCostAll(); renderSttState();
 }
 
-function updateEstimatePreview() {
-  // 구 팝업 제거됨 - 사용 안 함
-}
-
-async function saveConsultation() {
-  if(!AppState.connected){alert('Supabase 연결이 아직 완료되지 않았습니다.');return;}
-  const patient=getSelectedPatient();
-  if(!patient){alert('상담할 환자를 먼저 선택해주세요.');return;}
-
-  const activeQuote = getActiveQuote();
-  const { subtotal, discountAmt, total } = calcQuote(activeQuote);
-
-  const payload={
-    user_id: AppState.currentUser.id,
-    patient_id:patient.id,
-    title:document.getElementById('consultTitleInput').value.trim()||'상담 기록',
-    diagnosis_note:document.getElementById('consultDiagnosisInput').value.trim()||'-',
-    stt_text:AppState.sttRaw||null,
-    stt_raw:AppState.sttRaw||null,
-    stt_summary:AppState.sttSummary||null,
-    estimated_total:total,
-    consult_date: new Date().toISOString().slice(0,10),
-    next_action: document.getElementById('consultPlanInput')?.value || '재상담 예정'
-  };
-
-  try {
-    const{data, error}=await AppState.supabase.from('consultations').insert(payload).select().single();
-    if(error) throw error;
-
-    // 견적 항목 저장
-    if(activeQuote.items.length && data?.id) {
-      const itemPayloads = activeQuote.items.map((item, idx) => ({
-        consultation_id: data.id,
-        user_id: AppState.currentUser.id,
-        preset_id: item.presetId || null,
-        item_name: item.name,
-        unit_price: item.unitPrice,
-        quantity: item.qty,
-        discount: calcItemDiscount(item),
-        display_order: idx,
-      }));
-      // 전체 할인은 마지막 항목에 합산
-      if(itemPayloads.length > 0) itemPayloads[itemPayloads.length-1].discount += discountAmt;
-      await AppState.supabase.from('consultation_items').insert(itemPayloads);
-    }
-
-    await AppState.supabase.from('patients').update({
-      status:payload.next_action, last_total:total
-    }).eq('id',patient.id);
-
-    alert('상담 내용을 저장했습니다.');
-    resetConsultationForm();
-    await loadPatients();
-    await loadTodayConsultCount();
-  } catch(e){alert(`상담 저장 실패: ${e.message}`);}
-}
-
 let _consultCards = {};
 
 function escapeHtml(str) {
@@ -5931,9 +5851,6 @@ function bindEvents() {
   // 초기 로드 시 캔버스 표시 상태 반영
   updateTreatMobileState();
 
-  // ── 의료진 패널 (레거시 - 비활성) ──
-
-
   // ── 환자 폼 변경 감지 (저장 버튼 활성화) ──
   ['patientNameInput','patientMobileInput','patientChartInput','patientMemoInput'].forEach(id => {
     document.getElementById(id).addEventListener('input', checkPatientFormDirty);
@@ -6011,14 +5928,8 @@ function bindEvents() {
     else picker.classList.add('hidden');
   });
 
-  // 상단 버튼
-  // reloadAllBtn 제거됨
-
-
   document.getElementById('patientSearchInput')?.addEventListener('input', renderPatientList);
   bindPatientListClick();
-
-  // 상담 탭 (통합 후 제거됨 - setConsultTab은 호환용으로 유지)
 
   // 비용상담 화면
   document.getElementById('openPricePickerBtn')?.addEventListener('click', togglePricePicker);
