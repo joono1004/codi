@@ -4482,6 +4482,7 @@ async function showMainApp(user) {
   resetPatientForm();
   renderPatientCount(); renderPatientList(); renderSelectedPatient();
   renderSttState(); setConsultTab('history');
+  switchScreen('patient');
   setTimeout(async () => {
     initCanvas(); bindCanvasEvents(); bindCanvasTopbar(); bindOpacityControls(); renderCostScreen();
     await loadCanvasCategories();
